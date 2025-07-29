@@ -8,5 +8,7 @@ This code uses datasets accessed through external sites.
 
 ### **City Boundaries**
 Vancouver: https://opendata.vancouver.ca/explore/dataset/local-area-boundary/information/?disjunctive.name&location=13,49.24416,-123.14112&basemap=jawg.streets
+
 Winnipeg: https://data.winnipeg.ca/City-Planning/City-Limit/2nyq-f444/about_data
+
 Ottawa: https://open.ottawa.ca/datasets/8cdb5b8e38194bdeb9dc75ac4c15c8f0_13/explore?location=45.372942%2C-75.700400%2C2.32
