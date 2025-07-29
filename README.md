@@ -7,7 +7,7 @@ Uses city boundary data of Vancouver, Winnipeg, and Ottawa to trim the raster da
 This code uses datasets accessed through external sites.
 
 ### **City Boundaries**
-Vancouver's [Local Boundary](https://opendata.vancouver.ca/explore/dataset/local-area-boundary/information/?disjunctive.name&location=13,49.24416,-123.14112&basemap=jawg.streets)
+Vancouver's [Local Area Boundary](https://opendata.vancouver.ca/explore/dataset/local-area-boundary/information/?disjunctive.name&location=13,49.24416,-123.14112&basemap=jawg.streets)
 
 Winnipeg's [City Limits](https://data.winnipeg.ca/City-Planning/City-Limit/2nyq-f444/about_data)
 
