@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import rasterio
 from rasterio.merge import merge
 from rasterio.warp import calculate_default_transform, reproject, Resampling
-from rasterio.windows import from_bounds
+from rasterio.mask import mask
+from shapely.geometry import mapping
 from rasterio.transform import array_bounds
 import numpy as np
 
@@ -45,7 +46,7 @@ def process_and_plot_rasters(file_dict, title_prefix):
     for city, paths in file_dict.items():
         print(f"\nProcessing {city} {title_prefix} rasters...")
 
-        # Merge if multiple rasters
+        # Merge rasters if more than one
         with rasterio.open(paths[0]) as first_src:
             src_crs = first_src.crs
 
@@ -54,8 +55,10 @@ def process_and_plot_rasters(file_dict, title_prefix):
         for src in src_files:
             src.close()
 
-        # Reproject to city UTM CRS
+        # Get target CRS
         target_crs = city_boundaries[city].crs
+
+        # Reproject the mosaic to match the city's UTM CRS
         bounds = array_bounds(mosaic.shape[1], mosaic.shape[2], mosaic_transform)
         dst_transform, width, height = calculate_default_transform(
             src_crs, target_crs, mosaic.shape[2], mosaic.shape[1], *bounds
@@ -72,24 +75,30 @@ def process_and_plot_rasters(file_dict, title_prefix):
             resampling=Resampling.bilinear
         )
 
-        # Crop to city bounding box
-        bbox = city_boundaries[city].total_bounds
-        crop_window = from_bounds(*bbox, transform=dst_transform)
-        cropped_array = dst_array[0][
-            int(crop_window.row_off):int(crop_window.row_off + crop_window.height),
-            int(crop_window.col_off):int(crop_window.col_off + crop_window.width)
-        ]
+        # Clip to polygon (not just bbox)
+        shapes = [mapping(geom) for geom in city_boundaries[city].geometry]
+        clipped_array, clipped_transform = mask(
+            dataset={
+                "data": dst_array[0],
+                "transform": dst_transform,
+                "crs": target_crs
+            },
+            shapes=shapes,
+            crop=True,
+            filled=True,
+            nodata=0
+        )
 
         result[city] = {
-            "array": cropped_array,
-            "transform": dst_transform,
+            "array": clipped_array[0],
+            "transform": clipped_transform,
             "crs": target_crs
         }
 
         # Plot
         plt.figure(figsize=(10, 8))
-        plt.imshow(cropped_array, cmap='viridis')
-        plt.title(f"{city} {title_prefix} Canopy Height Model (Reprojected & Cropped)")
+        plt.imshow(clipped_array[0], cmap='viridis')
+        plt.title(f"{city} {title_prefix} Canopy Height Model (Clipped to Polygon)")
         plt.colorbar(label="Height (m)")
         plt.axis('off')
         plt.show()
