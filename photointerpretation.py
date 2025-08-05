@@ -7,8 +7,6 @@ import numpy as np
 wpg_itree = pd.read_csv('Winnipeg\Winnipeg Photointerpretation.csv')
 wpg_itree_lidar = pd.read_csv('Winnipeg\Winnipeg Photointerpretation LiDAR.csv')
 
-print(wpg_itree.columns)
-
 ## -------------------------------------------------- CREATE HISTOGRAM -------------------------------------------------
 #region
 
@@ -18,7 +16,7 @@ wpg_itree_clean = wpg_itree.dropna(subset=['Canopy'])
 # Convert to percent once to reduce repeated operations
 canopy_data = wpg_itree_clean['Canopy'].values * 100
 
-# Bootstrap function
+# Bootstrap function - 10,000 bootstrap samples
 def bootstrap_means(data, sample_size, n_bootstrap=10000, seed=42):
     rng = np.random.default_rng(seed)
     return [np.mean(rng.choice(data, size=sample_size, replace=True)) for _ in range(n_bootstrap)]
@@ -34,17 +32,21 @@ plt.figure(figsize=(12, 7))
 
 for size in sample_sizes:
     boot_means = bootstrap_means(canopy_data, sample_size=size)
-    sns.kdeplot(boot_means, label=f'{size}-point Samples', fill=True, alpha=0.3, linewidth=2)
+    sns.kdeplot(boot_means, label=f'{size} Points', fill=True, alpha=0.3, linewidth=2)
 
 # Vertical line: full dataset mean
-plt.axvline(full_sample_mean, color='black', linestyle='--', linewidth=2, label=f'Full Sample Mean ({full_sample_mean:.2f}%)')
+plt.axvline(full_sample_mean, color='black', linestyle='--', linewidth=2)
+plt.text(full_sample_mean + 0.3, plt.ylim()[1] * 0.9,  # offset slightly to the right and near top
+         f'Full Sample Canopy Cover ({full_sample_mean:.2f}%)', color='black', fontsize=11)
 
 # Final styling
-plt.title("Bootstrap Distributions of Estimated Canopy Cover")
-plt.xlabel("Estimated Canopy Cover (%)")
-plt.ylabel("Density")
-plt.legend(title="Sample Size")
-plt.grid(True, linestyle='--', alpha=0.6)
+plt.xlabel("Estimated Canopy Cover (%)", fontsize=12, fontweight='bold')
+plt.ylabel("Density", fontsize=12, fontweight='bold')
+
+legend = plt.legend(title="Sample Size")
+plt.setp(legend.get_title(), fontweight='bold')
+
+plt.grid(False)
 plt.tight_layout()
 plt.show()
 
