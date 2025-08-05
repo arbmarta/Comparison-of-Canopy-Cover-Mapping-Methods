@@ -5,7 +5,7 @@ import pandas as pd
 # Canopy cover area in shapefiles is calculated in square meters
 
 # Municipal boundary area in km²
-wpg_area = 475382755.7377889 / 1000000
+wpg_area = 475382755.7377889 * 1e-6
 
 ## ------------------------------------------ IMPORT THE CANOPY COVER DATASETS -----------------------------------------
 #region
@@ -28,23 +28,23 @@ wpg_itree_lidar = pd.read_csv('Winnipeg/Winnipeg Photointerpretation LiDAR.csv')
 print(f"\n--- WINNIPEG TOTAL CANOPY COVER AREA ---\n")
 
 # Calculate total canopy cover from wpg_lidar
-lidar_canopy_area = wpg_lidar['CanopyArea'].sum() / 1000000
+lidar_canopy_area = wpg_lidar['CanopyArea'].sum() * 1e-6
 lidar_canopy_cover = lidar_canopy_area / wpg_area * 100
 print(f"\nLiDAR-derived canopy cover: {lidar_canopy_cover:.2f}% ({lidar_canopy_area:.2f} km²)")
 
 # Estimate total canopy cover from meta
-meta_canopy_area = wpg_meta['CanopyArea'].sum() / 1000000
+meta_canopy_area = wpg_meta['CanopyArea'].sum() * 1e-6
 meta_canopy_cover = meta_canopy_area / wpg_area * 100
 print(f"\nMeta CHM canopy cover: {meta_canopy_cover:.2f}% ({meta_canopy_area:.2f} km²)")
 
 # Estimate total canopy cover from eth
-eth_canopy_area = wpg_eth['CanopyArea'].sum() / 1000000
+eth_canopy_area = wpg_eth['CanopyArea'].sum() * 1e-6
 eth_canopy_cover = eth_canopy_area / wpg_area * 100
 print(f"\nETH CHM canopy cover: {eth_canopy_cover:.2f}% ({eth_canopy_area:.2f} km²)")
 
 # Estimate total canopy cover from Bayan
 wpg_bayan['Bayan_Area'] = wpg_bayan['pred'] / 100 * 14400
-bayan_canopy_area = wpg_bayan['Bayan_Area'].sum() / 1000000
+bayan_canopy_area = wpg_bayan['Bayan_Area'].sum() * 1e-6
 bayan_canopy_cover = bayan_canopy_area / wpg_area * 100
 print(f"\nBayan canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
 
@@ -93,9 +93,9 @@ total_eth_area_m2 = wpg_bayan['ETH_Area'].sum()
 total_meta_area_m2 = wpg_bayan['Meta_Area'].sum()
 total_lidar_area_m2 = wpg_bayan['LiDAR_Area'].sum()
 
-total_eth_area_km2 = total_eth_area_m2 / 1e6
-total_meta_area_km2 = total_meta_area_m2 / 1e6
-total_lidar_area_km2 = total_lidar_area_m2 / 1e6
+total_eth_area_km2 = total_eth_area_m2 * 1e-6
+total_meta_area_km2 = total_meta_area_m2 * 1e-6
+total_lidar_area_km2 = total_lidar_area_m2 * 1e-6
 
 grid_area_m2 = 466718400
 eth_cover_percent = (total_eth_area_m2 / grid_area_m2) * 100
