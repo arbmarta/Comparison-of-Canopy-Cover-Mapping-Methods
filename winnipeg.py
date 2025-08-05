@@ -10,20 +10,20 @@ wpg_area = 475382755.7377889 / 1000000
 ## ------------------------------------------ IMPORT THE CANOPY COVER DATASETS -----------------------------------------
 #region
 
-print("Reading canopy dataset shapefiles...")
+print("Importing the canopy cover datasets...")
 wpg_meta = gpd.read_file('Winnipeg/Winnipeg Meta Canopy Cover Polygon.shp')
 wpg_eth = gpd.read_file('Winnipeg/Winnipeg ETH Canopy Cover Polygon.shp')
 wpg_bayan = gpd.read_file('Winnipeg/Bayan/TWPG.shp')
 wpg_lidar = gpd.read_file('Winnipeg/Winnipeg LiDAR Canopy Cover Polygon.shp')
 
-print("Reprojecting all shapefiles to UTM Zone 14N...")
+# Reproject all layers to UTM Zone 14N
 wpg_utm_crs = "EPSG:32614"
 wpg_meta = wpg_meta.to_crs(wpg_utm_crs)
 wpg_eth = wpg_eth.to_crs(wpg_utm_crs)
 wpg_bayan = wpg_bayan.to_crs(wpg_utm_crs)
 wpg_lidar = wpg_lidar.to_crs(wpg_utm_crs)
 
-print("Reading photointerpretation CSV files...")
+# Read the photo-interpretation csv
 wpg_itree = pd.read_csv('Winnipeg/Winnipeg Photointerpretation.csv')
 wpg_itree_lidar = pd.read_csv('Winnipeg/Winnipeg Photointerpretation LiDAR.csv')
 
@@ -34,31 +34,31 @@ wpg_itree_lidar = pd.read_csv('Winnipeg/Winnipeg Photointerpretation LiDAR.csv')
 
 print(f"\n--- WINNIPEG TOTAL CANOPY COVER AREA ---\n")
 
-print("Calculating LiDAR-derived canopy cover...")
+# Calculate total canopy cover from wpg_lidar
 lidar_canopy_area = wpg_lidar['CanopyArea'].sum() / 1000000
 lidar_canopy_cover = lidar_canopy_area / wpg_area * 100
-print(f"LiDAR-derived canopy cover: {lidar_canopy_cover:.2f}% ({lidar_canopy_area:.2f} km²)")
+print(f"\nLiDAR-derived canopy cover: {lidar_canopy_cover:.2f}% ({lidar_canopy_area:.2f} km²)")
 
-print("Calculating Meta CHM canopy cover...")
+# Estimate total canopy cover from meta
 meta_canopy_area = wpg_meta['CanopyArea'].sum() / 1000000
 meta_canopy_cover = meta_canopy_area / wpg_area * 100
-print(f"Meta CHM canopy cover: {meta_canopy_cover:.2f}% ({meta_canopy_area:.2f} km²)")
+print(f"\nMeta CHM canopy cover: {meta_canopy_cover:.2f}% ({meta_canopy_area:.2f} km²)")
 
-print("Calculating ETH CHM canopy cover...")
+# Estimate total canopy cover from eth
 eth_canopy_area = wpg_eth['CanopyArea'].sum() / 1000000
 eth_canopy_cover = eth_canopy_area / wpg_area * 100
-print(f"ETH CHM canopy cover: {eth_canopy_cover:.2f}% ({eth_canopy_area:.2f} km²)")
+print(f"\nETH CHM canopy cover: {eth_canopy_cover:.2f}% ({eth_canopy_area:.2f} km²)")
 
-print("Calculating Bayan-estimated canopy cover...")
+# Estimate total canopy cover from Bayan
 wpg_bayan['Bayan_Area'] = wpg_bayan['pred'] / 100 * 14400
 bayan_canopy_area = wpg_bayan['Bayan_Area'].sum() / 1000000
 bayan_canopy_cover = bayan_canopy_area / wpg_area * 100
-print(f"Bayan canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
+print(f"\nBayan canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
 
-print("Calculating photointerpretation canopy cover...")
+# Estimate total canopy cover from i-tree
 itree_canopy_cover = wpg_itree['Canopy'].sum() / 1000
 itree_lidar_canopy_cover = wpg_itree_lidar['Canopy'].sum() / 1000
-print(f"Photointerpretation canopy cover: {itree_canopy_cover:.2f}%")
+print(f"\nPhotointerpretation canopy cover: {itree_canopy_cover:.2f}%")
 print(f"Photointerpretation canopy cover (LiDAR): {itree_lidar_canopy_cover:.2f}%")
 
 #endregion
