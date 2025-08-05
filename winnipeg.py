@@ -58,8 +58,8 @@ eth_canopy_cover = eth_canopy_area / wpg_area * 100
 print(f"\nETH CHM canopy cover: {eth_canopy_cover:.2f}% ({eth_canopy_area:.2f} km²)")
 
 # Estimate total canopy cover from wpg_bayan
-wpg_bayan['CanopyArea'] = wpg_bayan['pred'] / 100 * 14400
-bayan_canopy_area = wpg_bayan['CanopyArea'].sum() / 1000000
+wpg_bayan['Bayan_Area'] = wpg_bayan['pred'] / 100 * 14400
+bayan_canopy_area = wpg_bayan['Bayan_Area'].sum() / 1000000
 bayan_canopy_cover = bayan_canopy_area / wpg_area * 100
 
 print(f"\nBayan canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
@@ -115,16 +115,17 @@ total_eth_area_km2 = total_eth_area_m2 / 1e6
 total_meta_area_km2 = total_meta_area_m2 / 1e6
 total_lidar_area_km2 = total_lidar_area_m2 / 1e6
 
-# Calculate canopy cover % across entire grid extent
-eth_cover_percent = (total_eth_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
-meta_cover_percent = (total_meta_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
-lidar_cover_percent = (total_lidar_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
+# Calculate canopy cover % across entire grid extent; 466718400 is the total grid area in square meters
+eth_cover_percent = (total_eth_area_m2 / 466718400) * 100
+meta_cover_percent = (total_meta_area_m2 / 466718400) * 100
+lidar_cover_percent = (total_lidar_area_m2 / 466718400) * 100
 
 # Print results
 print("\n\n--- Canopy Cover Summary Across Entire Grid ---")
 print(f"LiDAR Canopy Cover: {lidar_cover_percent:.2f}% ({total_lidar_area_km2:.2f} km²)")
 print(f"Meta-estimated canopy cover: {meta_cover_percent:.2f}% ({total_meta_area_km2:.2f} km²)")
 print(f"ETH-estimated canopy cover: {eth_cover_percent:.2f}% ({total_eth_area_km2:.2f} km²)")
+print(f"Bayan-estimated canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
 
 #endregion
 
@@ -133,6 +134,17 @@ print(f"ETH-estimated canopy cover: {eth_cover_percent:.2f}% ({total_eth_area_km
 
 # Copy the wpg_bayan dataframe
 gdf = wpg_bayan.drop.copy()
+
+# Ensure no missing values in any of the three columns
+valid = gdf[['LiDAR_Area', 'ETH_Area', 'Meta_Area', 'Bayan_Area']].dropna()
+
+# Calculate RMSE value
+eth_rmse = mean_squared_error(valid['LiDAR_Area'], valid['ETH_Area'], squared=False)
+meta_rmse = mean_squared_error(valid['LiDAR_Area'], valid['Meta_Area'], squared=False)
+
+# Print results
+print(f"RMSE (ETH vs LiDAR): {eth_rmse:.2f} m²")
+print(f"RMSE (Meta vs LiDAR): {meta_rmse:.2f} m²")
 
 #
 print(gdf.columns)
