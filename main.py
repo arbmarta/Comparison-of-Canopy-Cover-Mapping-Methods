@@ -80,46 +80,52 @@ print(f"Photointerpretation canopy cover (LiDAR): {itree_lidar_canopy_cover:.2f}
 # Split wpg_eth and wpg_meta at grid boundaries
 meta_split = gpd.overlay(wpg_meta, wpg_bayan, how='intersection')
 eth_split = gpd.overlay(wpg_eth, wpg_bayan, how='intersection')
+lidar_split = gpd.overlay(wpg_lidar, wpg_bayan, how='intersection')
 
-# Calculate area of each split polygon
-meta_split['Meta_Area'] = meta_split.geometry.area # Add a new column for area in square meters
-eth_split['ETH_Area'] = eth_split.geometry.area # Add a new column for area in square meters
+# Calculate area of each split polygon; add a new column for area in square meters
+meta_split['Meta_Area'] = meta_split.geometry.area
+eth_split['ETH_Area'] = eth_split.geometry.area
+lidar_split['LiDAR_Area'] = lidar_split.geometry.area
 
 # Sum canopy cover area within each grid cell
 meta_by_grid = meta_split.groupby('id')['Meta_Area'].sum().reset_index()
 eth_by_grid = eth_split.groupby('id')['ETH_Area'].sum().reset_index()
+lidar_by_grid = lidar_split.groupby('id')['LiDAR_Area'].sum().reset_index()
 
 # Join canopy cover area back to Bayan grid
 wpg_bayan = wpg_bayan.merge(meta_by_grid, on='id', how='left')
 wpg_bayan = wpg_bayan.merge(eth_by_grid, on='id', how='left')
+wpg_bayan = wpg_bayan.merge(lidar_by_grid, on='id', how='left')
 
 # Replace NaN values with 0 for cells without canopy
 wpg_bayan['Meta_Area'] = wpg_bayan['Meta_Area'].fillna(0)
 wpg_bayan['ETH_Area'] = wpg_bayan['ETH_Area'].fillna(0)
+wpg_bayan['LiDAR_Area'] = wpg_bayan['LiDAR_Area'].fillna(0)
 
 # Calculate canopy cover percentage (area / 14,400 m² grid cell)
 wpg_bayan['Meta_Canopy_Percent'] = (wpg_bayan['Meta_Area'] / 14400) * 100
 wpg_bayan['ETH_Canopy_Percent'] = (wpg_bayan['ETH_Area'] / 14400) * 100
+wpg_bayan['LiDAR_Canopy_Percent'] = (wpg_bayan['LiDAR_Area'] / 14400) * 100
 
-# Calculate total grid area (based on 14,400 m² per grid)
-grid_area_total = len(wpg_bayan) * 14400  # in square meters
-print(grid_area_total)
-
-# Calculate total ETH and Meta canopy area (in m² and km²)
+# Calculate total canopy area (in m² and km²)
 total_eth_area_m2 = wpg_bayan['ETH_Area'].sum()
 total_meta_area_m2 = wpg_bayan['Meta_Area'].sum()
+total_lidar_area_m2 = wpg_bayan['LiDAR_Area'].sum()
 
 total_eth_area_km2 = total_eth_area_m2 / 1e6
 total_meta_area_km2 = total_meta_area_m2 / 1e6
+total_lidar_area_km2 = total_lidar_area_m2 / 1e6
 
 # Calculate canopy cover % across entire grid extent
-eth_cover_percent = (total_eth_area_m2 / grid_area_total) * 100
-meta_cover_percent = (total_meta_area_m2 / grid_area_total) * 100
+eth_cover_percent = (total_eth_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
+meta_cover_percent = (total_meta_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
+lidar_cover_percent = (total_lidar_area_m2 / 466718400) * 100 # 466718400 is the total grid area in square meters
 
 # Print results
-print("--- Canopy Cover Summary Across Entire Grid ---")
-print(f"Total ETH Canopy Area: {total_eth_area_km2:.2f} km² ({eth_cover_percent:.2f}%)")
-print(f"Total Meta Canopy Area: {total_meta_area_km2:.2f} km² ({meta_cover_percent:.2f}%)")
+print("\n\n--- Canopy Cover Summary Across Entire Grid ---")
+print(f"LiDAR Canopy Cover: {lidar_cover_percent:.2f}% ({total_lidar_area_km2:.2f} km²)")
+print(f"Meta-estimated canopy cover: {meta_cover_percent:.2f}% ({total_meta_area_km2:.2f} km²)")
+print(f"ETH-estimated canopy cover: {eth_cover_percent:.2f}% ({total_eth_area_km2:.2f} km²)")
 
 # Visualize results
 wpg_bayan.plot(column='ETH_Canopy_Percent', cmap='YlGn', legend=True, figsize=(10, 8),)
