@@ -5,7 +5,6 @@ import numpy as np
 
 # Read the photo-interpretation csv
 wpg_itree = pd.read_csv('Winnipeg\Winnipeg Photointerpretation.csv')
-wpg_itree_lidar = pd.read_csv('Winnipeg\Winnipeg Photointerpretation LiDAR.csv')
 
 ## -------------------------------------------------- CREATE HISTOGRAM -------------------------------------------------
 #region
