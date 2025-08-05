@@ -1,15 +1,14 @@
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.metrics import mean_squared_error
+import numpy as np
 
 # Notes
-# Canopy cover area is calculated in square meters
+# Canopy cover area in shapefiles is calculated in square meters
 
 # Municipal boundary area
 wpg_area = 475382755.7377889 / 1000000
-
-# Bayan constant
-bayan_area = 14400
 
 ## ------------------------------------------ IMPORT THE CANOPY COVER DATASETS -----------------------------------------
 #region
@@ -74,7 +73,7 @@ print(f"Photointerpretation canopy cover (LiDAR): {itree_lidar_canopy_cover:.2f}
 
 #endregion
 
-## --------------------------------------- COMPARE ACCURACY WITHIN THE BAYAN GRID --------------------------------------
+## --------------------------------------- COMPARE RESULTS WITHIN THE BAYAN GRID ---------------------------------------
 #region
 
 # Split wpg_eth and wpg_meta at grid boundaries
@@ -127,11 +126,22 @@ print(f"LiDAR Canopy Cover: {lidar_cover_percent:.2f}% ({total_lidar_area_km2:.2
 print(f"Meta-estimated canopy cover: {meta_cover_percent:.2f}% ({total_meta_area_km2:.2f} km²)")
 print(f"ETH-estimated canopy cover: {eth_cover_percent:.2f}% ({total_eth_area_km2:.2f} km²)")
 
-# Visualize results
-wpg_bayan.plot(column='ETH_Canopy_Percent', cmap='YlGn', legend=True, figsize=(10, 8),)
-plt.title('ETH Canopy Cover (%) by Grid Cell')
-plt.xlabel('Longitude')
-plt.ylabel('Latitude')
-plt.show()
+#endregion
+
+## --------------------------------------------------- CALCULATE RMSE --------------------------------------------------
+#region
+
+# Copy the wpg_bayan dataframe
+gdf = wpg_bayan.drop.copy()
+
+#
+print(gdf.columns)
+
+#endregion
+
+## -------------------------------------------- COMPARE PHOTOINTERPRETATION --------------------------------------------
+#region
+
+
 
 #endregion
