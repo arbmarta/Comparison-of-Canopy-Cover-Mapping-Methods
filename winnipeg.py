@@ -11,17 +11,10 @@ wpg_area = 475382755.7377889 / 1000000
 #region
 
 print("Importing the canopy cover datasets...")
-wpg_meta = gpd.read_file('Winnipeg/Winnipeg Meta Canopy Cover Polygon.shp')
-wpg_eth = gpd.read_file('Winnipeg/Winnipeg ETH Canopy Cover Polygon.shp')
-wpg_bayan = gpd.read_file('Winnipeg/Bayan/TWPG.shp')
-wpg_lidar = gpd.read_file('Winnipeg/Winnipeg LiDAR Canopy Cover Polygon.shp')
-
-# Reproject all layers to UTM Zone 14N
-wpg_utm_crs = "EPSG:32614"
-wpg_meta = wpg_meta.to_crs(wpg_utm_crs)
-wpg_eth = wpg_eth.to_crs(wpg_utm_crs)
-wpg_bayan = wpg_bayan.to_crs(wpg_utm_crs)
-wpg_lidar = wpg_lidar.to_crs(wpg_utm_crs)
+wpg_meta = gpd.read_file('Winnipeg/Winnipeg Meta Canopy Cover Polygon.shp').to_crs("EPSG:32614")
+wpg_eth = gpd.read_file('Winnipeg/Winnipeg ETH Canopy Cover Polygon.shp').to_crs("EPSG:32614")
+wpg_bayan = gpd.read_file('Winnipeg/Bayan/TWPG.shp').to_crs("EPSG:32614")
+wpg_lidar = gpd.read_file('Winnipeg/Winnipeg LiDAR Canopy Cover Polygon.shp').to_crs("EPSG:32614")
 
 # Read the photo-interpretation csv
 wpg_itree = pd.read_csv('Winnipeg/Winnipeg Photointerpretation.csv')
@@ -86,14 +79,14 @@ wpg_bayan = wpg_bayan.merge(meta_by_grid, on='id', how='left')
 wpg_bayan = wpg_bayan.merge(eth_by_grid, on='id', how='left')
 wpg_bayan = wpg_bayan.merge(lidar_by_grid, on='id', how='left')
 
-wpg_bayan['Meta_Area'] = wpg_bayan['Meta_Area'].fillna(0)
-wpg_bayan['ETH_Area'] = wpg_bayan['ETH_Area'].fillna(0)
-wpg_bayan['LiDAR_Area'] = wpg_bayan['LiDAR_Area'].fillna(0)
+wpg_bayan[['Meta_Area', 'ETH_Area', 'LiDAR_Area']] = wpg_bayan[['Meta_Area', 'ETH_Area', 'LiDAR_Area']].fillna(0)
 
 print("Calculating percent canopy cover per grid cell...")
-wpg_bayan['Meta_Canopy_Percent'] = (wpg_bayan['Meta_Area'] / 14400) * 100
-wpg_bayan['ETH_Canopy_Percent'] = (wpg_bayan['ETH_Area'] / 14400) * 100
-wpg_bayan['LiDAR_Canopy_Percent'] = (wpg_bayan['LiDAR_Area'] / 14400) * 100
+wpg_bayan = wpg_bayan.assign(
+    Meta_Canopy_Percent = (wpg_bayan['Meta_Area'] / 14400) * 100,
+    ETH_Canopy_Percent = (wpg_bayan['ETH_Area'] / 14400) * 100,
+    LiDAR_Canopy_Percent = (wpg_bayan['LiDAR_Area'] / 14400) * 100
+)
 
 print("Calculating total canopy cover across full grid extent...")
 total_eth_area_m2 = wpg_bayan['ETH_Area'].sum()
