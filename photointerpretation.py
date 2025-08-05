@@ -36,8 +36,8 @@ for size in sample_sizes:
 
 # Vertical line: full dataset mean
 plt.axvline(full_sample_mean, color='black', linestyle='--', linewidth=2)
-plt.text(full_sample_mean + 0.3, plt.ylim()[1] * 0.9,  # offset slightly to the right and near top
-         f'Full Sample Canopy Cover ({full_sample_mean:.2f}%)', color='black', fontsize=11)
+plt.text(full_sample_mean + 0.3, plt.ylim()[1] * 0.95,  # offset slightly to the right and near top
+         f'Full Sample Canopy Cover ({full_sample_mean:.2f}%)', color='black', fontsize=12)
 
 # Final styling
 plt.xlabel("Estimated Canopy Cover (%)", fontsize=12, fontweight='bold')
