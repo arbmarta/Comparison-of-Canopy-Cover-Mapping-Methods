@@ -1,8 +1,5 @@
 import geopandas as gpd
-import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.metrics import mean_squared_error
-import numpy as np
 
 # Notes
 # Canopy cover area in shapefiles is calculated in square meters
@@ -127,33 +124,14 @@ print(f"Meta-estimated canopy cover: {meta_cover_percent:.2f}% ({total_meta_area
 print(f"ETH-estimated canopy cover: {eth_cover_percent:.2f}% ({total_eth_area_km2:.2f} km²)")
 print(f"Bayan-estimated canopy cover: {bayan_canopy_cover:.2f}% ({bayan_canopy_area:.2f} km²)")
 
-#endregion
-
-## --------------------------------------------------- CALCULATE RMSE --------------------------------------------------
-#region
-
 # Copy the wpg_bayan dataframe
 gdf = wpg_bayan.drop.copy()
 
-# Ensure no missing values in any of the three columns
-valid = gdf[['LiDAR_Area', 'ETH_Area', 'Meta_Area', 'Bayan_Area']].dropna()
+# Extract the centroid coordinates
+gdf['X'] = gdf.geometry.centroid.x
+gdf['Y'] = gdf.geometry.centroid.y
 
-# Calculate RMSE value
-eth_rmse = mean_squared_error(valid['LiDAR_Area'], valid['ETH_Area'], squared=False)
-meta_rmse = mean_squared_error(valid['LiDAR_Area'], valid['Meta_Area'], squared=False)
-
-# Print results
-print(f"RMSE (ETH vs LiDAR): {eth_rmse:.2f} m²")
-print(f"RMSE (Meta vs LiDAR): {meta_rmse:.2f} m²")
-
-#
-print(gdf.columns)
-
-#endregion
-
-## -------------------------------------------- COMPARE PHOTOINTERPRETATION --------------------------------------------
-#region
-
-
+# Save with centroid coordinates
+gdf.drop(columns='geometry').to_csv("Winnipeg/Bayan/Canopy_Cover_Results_with_coords.csv", index=False)
 
 #endregion
