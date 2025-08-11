@@ -1,0 +1,5 @@
+Log In
+ssh -i ~/.ssh/id_ed USER@trillium.scinet.utoronto.ca
+
+Import
+scp -i ~/.ssh/id_ed /cygwindow/c/Users/alexj/Downloads/FILE USER@trillium.scinet.utoronto.ca
