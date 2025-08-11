@@ -1,7 +1,5 @@
 import rasterio
 import geopandas as gpd
-from rasterio.vrt import WarpedVRT
-from rasterio.enums import Resampling
 from rasterio.mask import mask
 from rasterio.features import shapes
 from shapely.geometry import shape
@@ -11,11 +9,6 @@ from multiprocessing import Pool
 van_utm = "EPSG:32610"  # Vancouver
 win_utm = "EPSG:32614"  # Winnipeg
 ott_utm = "EPSG:32618"  # Ottawa
-
-# Access Bayan datasets
-van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs(van_utm)
-win_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs(win_utm)
-ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs(ott_utm)
 
 # Raster to canopy polygons function
 def raster_to_canopy_polygons(raster_path: str, boundary_gdf: gpd.GeoDataFrame,
@@ -52,7 +45,7 @@ def raster_to_canopy_polygons(raster_path: str, boundary_gdf: gpd.GeoDataFrame,
     out_gdf.to_file(out_path, driver="ESRI Shapefile")
     print(f"✅ Wrote {out_path} | CRS={utm_epsg} | features={len(out_gdf)}")
 
-# --- Load city boundaries (read as-is; reprojection happens inside the function) ---
+# Load Bayan files
 van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp')
 win_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp')
 ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp')
