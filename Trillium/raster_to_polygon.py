@@ -12,5 +12,5 @@ win_meta = rasterio.open('/scratch/arbmarta/Meta/Winnipeg Meta.tif')
 
 # Access Ottawa datasets
 ott_eth = rasterio.open('/scratch/arbmarta/ETH/Ottawa ETH.tif')
-ott_lidar = rasterio.open('/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif')
+#ott_lidar = rasterio.open('/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif')
 ott_meta = rasterio.open('/scratch/arbmarta/Meta/Ottawa Meta.tif')
