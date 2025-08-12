@@ -52,17 +52,18 @@ def summarize_city_to_csv(city: str, cfg: dict, out_csv: str) -> None:
     )
     bayan_attrs = bayan.drop(columns="geometry").copy()
 
-results = {}
+    results = {}
 
-for kind in ["ETH", "Meta"]:
-    raster_path = DATASETS[kind].format(city=city)
-    if not os.path.exists(raster_path):
-        raise FileNotFoundError(f"{city} {kind}: raster not found at {raster_path}")
+    for kind in ["ETH", "Meta"]:
+        raster_path = DATASETS[kind].format(city=city)
+        if not os.path.exists(raster_path):
+            raise FileNotFoundError(f"{city} {kind}: raster not found at {raster_path}")
 
-    with rasterio.open(raster_path) as src:
-        # Mask raster to the city grid in raster CRS (cheap)
-        bayan_src = bayan.to_crs(src.crs)
-        masked, transform = mask(src, bayan_src.geometry, crop=True, filled=True, nodata=0)
+        with rasterio.open(raster_path) as src:
+            # Mask raster to the city grid in raster CRS (cheap)
+            bayan_src = bayan.to_crs(src.crs)
+            masked, transform = mask(src, bayan_src.geometry, crop=True, filled=True, nodata=0)
+            raster_crs = src.crs  # capture before leaving the context
 
         # Threshold to canopy (>= 2 → 1, else 0)
         binary = (masked[0] >= 2).astype("uint8")
@@ -71,29 +72,29 @@ for kind in ["ETH", "Meta"]:
         poly_iter = shapes(binary, mask=(binary == 1), transform=transform)
         polys = [shape(geom) for geom, v in poly_iter if v == 1]
 
-    if not polys:
-        # No canopy → zeros column
-        results[kind] = pd.Series(dtype="float64", name=kind)
-        continue
+        if not polys:
+            # No canopy → zeros column
+            results[kind] = pd.Series(dtype="float64", name=kind)
+            continue
 
-    # Build GDF, dissolve (reduce feature count), project once to UTM
-    gdf = gpd.GeoDataFrame(geometry=polys, crs=src.crs)
-    dissolved = gdf.unary_union
-    parts = [dissolved] if dissolved.geom_type == "Polygon" else list(dissolved.geoms)
-    canopy = gpd.GeoDataFrame(geometry=parts, crs=gdf.crs).to_crs(utm)
+        # Build GDF, dissolve (reduce feature count), project once to UTM
+        gdf = gpd.GeoDataFrame(geometry=polys, crs=raster_crs)
+        dissolved = gdf.unary_union
+        parts = [dissolved] if dissolved.geom_type == "Polygon" else list(dissolved.geoms)
+        canopy = gpd.GeoDataFrame(geometry=parts, crs=raster_crs).to_crs(utm)
 
-    # Overlay with Bayan grid in UTM to split by cells, then area by cell_id
-    bayan_utm = bayan[["cell_id", "geometry"]].copy()
-    canopy["geometry"] = canopy.geometry.buffer(0)
-    bayan_utm["geometry"] = bayan_utm.geometry.buffer(0)
+        # Overlay with Bayan grid in UTM to split by cells, then area by cell_id
+        bayan_utm = bayan[["cell_id", "geometry"]].copy()
+        canopy["geometry"] = canopy.geometry.buffer(0)
+        bayan_utm["geometry"] = bayan_utm.geometry.buffer(0)
 
-    split = gpd.overlay(canopy, bayan_utm, how="identity").explode(index_parts=False, ignore_index=True)
-    split["area_m2"] = split.geometry.area
+        split = gpd.overlay(canopy, bayan_utm, how="identity").explode(index_parts=False, ignore_index=True)
+        split["area_m2"] = split.geometry.area
 
-    sums = split.groupby("cell_id", dropna=False)["area_m2"].sum().rename(kind)
-    results[kind] = sums
-    
-    # Merge ETH and Meta results onto Bayan attributes
+        sums = split.groupby("cell_id", dropna=False)["area_m2"].sum().rename(kind)
+        results[kind] = sums
+
+    # ---- merge ETH/Meta and write CSV (after the loop) ----
     out = bayan_attrs.merge(
         results.get("ETH", pd.Series(name="ETH")),
         left_on="cell_id",
@@ -114,12 +115,11 @@ for kind in ["ETH", "Meta"]:
         else:
             out[col] = 0.0
 
-    # Percentage columns (0–100), clipped to guard against tiny numeric noise
+    # Percentage columns (0–100)
     out["ETH_pct"]  = (out["ETH"]  / CELL_AREA_M2) * 100
     out["Meta_pct"] = (out["Meta"] / CELL_AREA_M2) * 100
     out[["ETH_pct", "Meta_pct"]] = out[["ETH_pct", "Meta_pct"]].clip(lower=0, upper=100)
 
-    # Write CSV
     out.to_csv(out_csv, index=False)
     print(f"✅ {city}: wrote {out_csv} with {len(out)} rows")
 
