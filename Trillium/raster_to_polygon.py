@@ -7,7 +7,6 @@ from rasterio.features import shapes
 from shapely.geometry import shape
 from multiprocessing import Pool
 
-
 # Import the bayan datasets
 van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
 wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
@@ -17,14 +16,17 @@ ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("E
 # Vancouver
 van_eth = '/scratch/arbmarta/ETH/Vancouver ETH.tif'
 van_meta = '/scratch/arbmarta/Meta/Vancouver Meta.tif'
+van_lidar = '/scratch/arbmarta/LiDAR/Vancouver LiDAR.tif'
 
 # Winnipeg
 win_eth = '/scratch/arbmarta/ETH/Winnipeg ETH.tif'
 win_meta = '/scratch/arbmarta/Meta/Winnipeg Meta.tif'
+win_lidar = '/scratch/arbmarta/LiDAR/Winnipeg LiDAR.tif'
 
 # Ottawa
 ott_eth = '/scratch/arbmarta/ETH/Ottawa ETH.tif'
 ott_meta = '/scratch/arbmarta/Meta/Ottawa Meta.tif'
+ott_lidar = '/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif'
 
 # Local UTM zones
 UTM = {"Vancouver": "EPSG:32610", "Winnipeg": "EPSG:32614", "Ottawa": "EPSG:32618"}
