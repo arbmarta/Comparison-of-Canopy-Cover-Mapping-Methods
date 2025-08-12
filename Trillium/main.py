@@ -20,7 +20,7 @@ CITIES = {
     "Ottawa": {
         "utm": "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs +type=crs",
         "bayan": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
-    },
+    }
 }
 
 DATASETS = {
