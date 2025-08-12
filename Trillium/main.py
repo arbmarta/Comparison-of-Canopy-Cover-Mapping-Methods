@@ -1,5 +1,6 @@
 import os
 import geopandas as gpd
+import pyproj
 import pandas as pd
 from multiprocessing import Pool
 import rasterio
