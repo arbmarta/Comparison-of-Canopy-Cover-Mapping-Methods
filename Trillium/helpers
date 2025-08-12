@@ -12,3 +12,6 @@ pip install PACKAGE
 
 run
 sbatch /scratch/USER/CODE.sh
+
+queue
+queue -u USER
