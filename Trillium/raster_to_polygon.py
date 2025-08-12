@@ -7,6 +7,7 @@ from rasterio.features import shapes
 from shapely.geometry import shape
 from multiprocessing import Pool
 
+
 # Import the bayan datasets
 van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
 wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
@@ -42,19 +43,23 @@ def ensure_valid(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 def raster_to_polygons(masked_arr, out_transform, nodata=None) -> gpd.GeoDataFrame:
     band = masked_arr[0]
 
-    if nodata is None:
-        include_mask = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
+    # valid (not-nodata) mask
+    if np.issubdtype(band.dtype, np.floating):
+        valid = ~np.isnan(band) if (nodata is None or np.isnan(nodata)) else (band != nodata)
     else:
-        include_mask = band != nodata
+        valid = np.ones_like(band, dtype=bool) if nodata is None else (band != nodata)
+
+    # keep only >0 to avoid polygonizing background
+    include_mask = valid & (band > 0)
 
     geoms, vals = [], []
     for geom, value in shapes(band, mask=include_mask, transform=out_transform):
-        if value is None:
+        if value is None or value <= 0:
             continue
         geoms.append(shape(geom))
         vals.append(float(value))
     return gpd.GeoDataFrame({"value": vals}, geometry=geoms)
-
+    
 def mask_polygonize_split_to_utm(raster_path: str,
                                  boundary_utm: gpd.GeoDataFrame,
                                  utm_epsg: str,
