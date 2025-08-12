@@ -32,7 +32,7 @@ ott_lidar = '/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif'
 UTM = {"Vancouver": "EPSG:32610", "Winnipeg": "EPSG:32614", "Ottawa": "EPSG:32618"}
 
 # Single output folder for everything
-OUT_DIR = "/scratch/arbmarta/ETH/Outputs"
+OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # ----------------------------------- HELPERS ------------------------------------
@@ -113,15 +113,18 @@ def main():
         # Vancouver
         (van_eth,  van_bayan, UTM["Vancouver"], "Vancouver", "ETH"),
         (van_meta, van_bayan, UTM["Vancouver"], "Vancouver", "Meta"),
+        (van_lidar, van_bayan, UTM["Vancouver"], "Vancouver", "LiDAR"),
         # Winnipeg
         (win_eth,  wpg_bayan, UTM["Winnipeg"],  "Winnipeg",  "ETH"),
         (win_meta, wpg_bayan, UTM["Winnipeg"],  "Winnipeg",  "Meta"),
+        (win_lidar, wpg_bayan, UTM["Winnipeg"],  "Winnipeg",  "LiDAR"),
         # Ottawa
         (ott_eth,  ott_bayan, UTM["Ottawa"],    "Ottawa",    "ETH"),
         (ott_meta, ott_bayan, UTM["Ottawa"],    "Ottawa",    "Meta"),
+        (ott_lidar, ott_bayan, UTM["Ottawa"],    "Ottawa",    "LiDAR"),
     ]
 
-    with Pool(processes=6) as pool:
+    with Pool(processes=9) as pool:
         pool.map(run_task, tasks)
 
 if __name__ == "__main__":
