@@ -1,28 +1,10 @@
-import geopandas
 import geopandas as gpd
-from shapely.geometry import shape
 from multiprocessing import Pool
 
 # UTM zones
 van_utm = "EPSG:32610"  # Vancouver
 win_utm = "EPSG:32614"  # Winnipeg
 ott_utm = "EPSG:32618"  # Ottawa
-
-# Load shapefiles
-# Vancouver
-van_meta = gpd.read_file('/scratch/arbmarta/Meta/Vancouver Meta canopy.shp')
-van_eth = gpd.read_file('/scratch/arbmarta/ETH/Vancouver ETH canopy.shp')
-van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp')
-
-# Winnipeg
-win_meta = gpd.read_file('/scratch/arbmarta/Meta/Winnipeg Meta canopy.shp')
-win_eth = gpd.read_file('/scratch/arbmarta/ETH/Winnipeg ETH canopy.shp')
-win_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp')
-
-# Ottawa
-ott_meta = gpd.read_file('/scratch/arbmarta/Meta/Ottawa Meta canopy.shp')
-ott_eth = gpd.read_file('/scratch/arbmarta/ETH/Ottawa ETH canopy.shp')
-ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp')
 
 # Helper to process one city (load → reproject → fix → split → save)
 def process_layer(layer_path, bayan_path, utm_epsg, out_path):
@@ -70,5 +52,6 @@ jobs = [
      "/scratch/arbmarta/ETH/Ottawa ETH canopy_SPLIT.shp"),
 ]
 
-with Pool(processes=6) as pool:
-    pool.starmap(process_layer, jobs)
+if __name__ == "__main__":
+    with Pool(processes=6) as pool:
+        pool.starmap(process_layer, jobs)
