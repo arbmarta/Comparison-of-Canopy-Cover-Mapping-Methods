@@ -4,123 +4,94 @@ from rasterio.mask import mask
 from rasterio.features import shapes
 from shapely.geometry import shape
 from multiprocessing import Pool
+import pandas as pd 
 
-# UTM zones
-van_utm = "EPSG:32610"  # Vancouver
-win_utm = "EPSG:32614"  # Winnipeg
-ott_utm = "EPSG:32618"  # Ottawa
+# ----------------------------- CONFIG -----------------------------
+CITIES = {
+    "Vancouver": {
+        "utm": "EPSG:32610",
+        "bayan": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
+    },
+    "Winnipeg": {
+        "utm": "EPSG:32614",
+        "bayan": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
+    },
+    "Ottawa": {
+        "utm": "EPSG:32618",
+        "bayan": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
+    },
+}
 
-# Raster to canopy polygons function
-def raster_to_canopy_polygons(raster_path: str, boundary_gdf: gpd.GeoDataFrame,
-                              utm_epsg: str, out_path: str, canopy_threshold: int = 2) -> None:
+DATASETS = {
+    "ETH":  "/scratch/arbmarta/ETH/{city} ETH.tif",
+    "Meta": "/scratch/arbmarta/Meta/{city} Meta.tif",
+}
+
+OUT_SPLIT = "/scratch/arbmarta/{kind}/{city} {kind} canopy_SPLIT.shp"
+CANOPY_THRESHOLD = 2  # value >= threshold becomes canopy (1)
+
+# Reuse your existing config dicts
+# CITIES = {...}  # includes "utm" and "bayan" for each city
+# OUT_SPLIT = "/scratch/arbmarta/{kind}/{city} {kind} canopy_SPLIT.shp"
+
+def summarize_city_to_csv(city: str, cfg: dict, out_csv: str) -> None:
     """
-    Convert a raster to binary canopy (>= canopy_threshold) clipped to boundary_gdf,
-    vectorize, dissolve touching polygons, reproject to UTM, and write shapefile.
+    For a city: compute area (m²) of split polygons for ETH and Meta,
+    sum by 120x120 Bayan grid cell, and write a CSV with original Bayan columns + ETH + Meta.
     """
-    with rasterio.open(raster_path) as src:
-        # Reproject city boundary to raster CRS (cheaper than warping raster)
-        boundary_src = boundary_gdf.to_crs(src.crs)
+    utm = cfg["utm"]
+    bayan_path = cfg["bayan"]
 
-        # Clip/mask raster by boundary (outside → nodata=0)
-        masked, transform = mask(
-            src, boundary_src.geometry, crop=True, filled=True, nodata=0
+    # Load Bayan grid (authoritative attributes)
+    bayan = gpd.read_file(bayan_path).to_crs(utm)
+    bayan = bayan.reset_index(drop=False).rename(columns={"index": "cell_id"})
+    # Keep attributes to return (all original Bayan columns + synthetic cell_id)
+    bayan_attrs = bayan.drop(columns="geometry").copy()
+
+    results = {}
+
+    for kind in ["ETH", "Meta"]:
+        split_path = OUT_SPLIT.format(kind=kind, city=city)
+        gdf = gpd.read_file(split_path)
+        if gdf.empty:
+            # No canopy polygons for this kind; create empty series aligned later
+            results[kind] = pd.Series(dtype="float64", name=kind)
+            continue
+
+        gdf = gdf.to_crs(utm)
+
+        # Assign each split polygon to a Bayan cell (robust even if split wasn't perfect)
+        # Using 'within' to avoid slivers; fallback to 'intersects' if needed.
+        joined = gpd.sjoin(
+            gdf.set_geometry("geometry"),
+            bayan[["cell_id", "geometry"]],
+            predicate="within",
+            how="left",
         )
 
-        # Binary canopy: 1 if value >= threshold else 0
-        binary = (masked[0] >= canopy_threshold).astype("uint8")
+        # Compute area in square meters (UTM is meters)
+        joined["area_m2"] = joined.geometry.area
 
-        # Polygonize canopy (value==1)
-        poly_iter = shapes(binary, mask=(binary == 1), transform=transform)
-        polys = [shape(geom) for geom, val in poly_iter if val == 1]
+        # Sum area by cell_id
+        sums = (
+            joined.groupby("cell_id", dropna=False)["area_m2"]
+            .sum()
+            .rename(kind)
+        )
+        results[kind] = sums
 
-        # Build GDF in raster CRS, then project once to UTM
-        gdf = gpd.GeoDataFrame(geometry=polys, crs=src.crs)
+    # Merge ETH and Meta onto full Bayan attribute table
+    out = bayan_attrs.merge(results["ETH"], left_on="cell_id", right_index=True, how="left")
+    out = out.merge(results["Meta"], left_on="cell_id", right_index=True, how="left")
 
-    # Dissolve touching polygons (fast path)
-    dissolved = gdf.unary_union
-    out_geoms = [dissolved] if dissolved.geom_type == "Polygon" else list(dissolved.geoms)
-    out_gdf = gpd.GeoDataFrame(geometry=out_geoms, crs=gdf.crs).to_crs(utm_epsg)
+    # Replace NaNs (no canopy in that cell) with zeros
+    out[["ETH", "Meta"]] = out[["ETH", "Meta"]].fillna(0.0)
 
-    # Save as ESRI Shapefile
-    out_gdf.to_file(out_path, driver="ESRI Shapefile")
-    print(f"✅ Wrote {out_path} | CRS={utm_epsg} | features={len(out_gdf)}")
+    # Write CSV
+    out.to_csv(out_csv, index=False)
+    print(f"✅ Wrote {out_csv} with {len(out)} rows")
 
-# Load Bayan files
-van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp')
-win_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp')
-ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp')
-
-# --- Jobs (ETH + Meta for each city) ---
-jobs = [
-    # Vancouver
-    ('/scratch/arbmarta/ETH/Vancouver ETH new.tif', van_bayan, van_utm,
-     '/scratch/arbmarta/ETH/Vancouver ETH canopy.shp'),
-    ('/scratch/arbmarta/Meta/Vancouver Meta.tif', van_bayan, van_utm,
-     '/scratch/arbmarta/Meta/Vancouver Meta canopy.shp'),
-
-    # Winnipeg
-    ('/scratch/arbmarta/ETH/Winnipeg ETH.tif', win_bayan, win_utm,
-     '/scratch/arbmarta/ETH/Winnipeg ETH canopy.shp'),
-    ('/scratch/arbmarta/Meta/Winnipeg Meta.tif', win_bayan, win_utm,
-     '/scratch/arbmarta/Meta/Winnipeg Meta canopy.shp'),
-
-    # Ottawa
-    ('/scratch/arbmarta/ETH/Ottawa ETH.tif', ott_bayan, ott_utm,
-     '/scratch/arbmarta/ETH/Ottawa ETH canopy.shp'),
-    ('/scratch/arbmarta/Meta/Ottawa Meta.tif', ott_bayan, ott_utm,
-     '/scratch/arbmarta/Meta/Ottawa Meta canopy.shp'),
-]
-
-if __name__ == "__main__":
-    with Pool(processes=6) as pool:  # adjust to available cores per node
-        pool.starmap(raster_to_canopy_polygons, jobs)
-
-# Helper to process one city (load → reproject → fix → split → save)
-def process_layer(layer_path, bayan_path, utm_epsg, out_path):
-    gdf   = gpd.read_file(layer_path).to_crs(utm_epsg)
-    bayan = gpd.read_file(bayan_path).to_crs(utm_epsg)
-
-    # fix invalids
-    gdf["geometry"]   = gdf.geometry.buffer(0)
-    bayan["geometry"] = bayan.geometry.buffer(0)
-
-    # split + save
-    split = gpd.overlay(gdf, bayan, how="identity").explode(index_parts=False, ignore_index=True)
-    split.to_file(out_path)
-
-# REPLACE jobs with one job per (city, layer)
-jobs = [
-    # Vancouver (meta & eth)
-    ("/scratch/arbmarta/Meta/Vancouver Meta canopy.shp",
-     "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
-     van_utm,
-     "/scratch/arbmarta/Meta/Vancouver Meta canopy_SPLIT.shp"),
-    ("/scratch/arbmarta/ETH/Vancouver ETH canopy.shp",
-     "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
-     van_utm,
-     "/scratch/arbmarta/ETH/Vancouver ETH canopy_SPLIT.shp"),
-
-    # Winnipeg (meta & eth)
-    ("/scratch/arbmarta/Meta/Winnipeg Meta canopy.shp",
-     "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
-     win_utm,
-     "/scratch/arbmarta/Meta/Winnipeg Meta canopy_SPLIT.shp"),
-    ("/scratch/arbmarta/ETH/Winnipeg ETH canopy.shp",
-     "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
-     win_utm,
-     "/scratch/arbmarta/ETH/Winnipeg ETH canopy_SPLIT.shp"),
-
-    # Ottawa (meta & eth)
-    ("/scratch/arbmarta/Meta/Ottawa Meta canopy.shp",
-     "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
-     ott_utm,
-     "/scratch/arbmarta/Meta/Ottawa Meta canopy_SPLIT.shp"),
-    ("/scratch/arbmarta/ETH/Ottawa ETH canopy.shp",
-     "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
-     ott_utm,
-     "/scratch/arbmarta/ETH/Ottawa ETH canopy_SPLIT.shp"),
-]
-
-if __name__ == "__main__":
-    with Pool(processes=6) as pool:
-        pool.starmap(process_layer, jobs)
+# --- Run for the three cities ---
+summarize_city_to_csv("Vancouver", CITIES["Vancouver"], "/scratch/arbmarta/Vancouver_bayan_canopy_sums.csv")
+summarize_city_to_csv("Winnipeg",  CITIES["Winnipeg"],  "/scratch/arbmarta/Winnipeg_bayan_canopy_sums.csv")
+summarize_city_to_csv("Ottawa",    CITIES["Ottawa"],    "/scratch/arbmarta/Ottawa_bayan_canopy_sums.csv")
