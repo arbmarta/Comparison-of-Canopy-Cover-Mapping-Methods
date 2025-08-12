@@ -2,6 +2,10 @@ import os
 import geopandas as gpd
 import pandas as pd
 from multiprocessing import Pool
+import rasterio
+from rasterio.mask import mask
+from rasterio.features import shapes
+from shapely.geometry import shape
 
 # ----------------------------- CONFIG -----------------------------
 CITIES = {
@@ -19,7 +23,11 @@ CITIES = {
     },
 }
 
-OUT_SPLIT = "/scratch/arbmarta/{kind}/{city} {kind} canopy_SPLIT.shp"
+DATASETS = {
+    "ETH":  "/scratch/arbmarta/ETH/{city} ETH.tif",
+    "Meta": "/scratch/arbmarta/Meta/{city} Meta.tif",
+}
+
 OUT_CSV   = "/scratch/arbmarta/{city}_bayan_canopy_sums.csv"
 
 CELL_AREA_M2 = 120 * 120  # 14,400 m² per Bayan cell
@@ -44,65 +52,47 @@ def summarize_city_to_csv(city: str, cfg: dict, out_csv: str) -> None:
     )
     bayan_attrs = bayan.drop(columns="geometry").copy()
 
-    results = {}
+results = {}
 
-    for kind in ["ETH", "Meta"]:
-        split_path = OUT_SPLIT.format(kind=kind, city=city)
-        if not os.path.exists(split_path):
-            print(f"⚠️ {city} {kind}: split shapefile not found. Filling zeros.")
-            results[kind] = pd.Series(dtype="float64", name=kind)
-            continue
+for kind in ["ETH", "Meta"]:
+    raster_path = DATASETS[kind].format(city=city)
+    if not os.path.exists(raster_path):
+        raise FileNotFoundError(f"{city} {kind}: raster not found at {raster_path}")
 
-        gdf = gpd.read_file(split_path)
-        if gdf.empty:
-            print(f"⚠️ {city} {kind}: split shapefile is empty. Filling zeros.")
-            results[kind] = pd.Series(dtype="float64", name=kind)
-            continue
+    with rasterio.open(raster_path) as src:
+        # Mask raster to the city grid in raster CRS (cheap)
+        bayan_src = bayan.to_crs(src.crs)
+        masked, transform = mask(src, bayan_src.geometry, crop=True, filled=True, nodata=0)
 
-        # Ensure UTM CRS
-        gdf = gdf.to_crs(utm)
+        # Threshold to canopy (>= 2 → 1, else 0)
+        binary = (masked[0] >= 2).astype("uint8")
 
-        # --- Spatial join: expect EXACTLY ONE Bayan cell per split polygon ---
-        joined = gpd.sjoin(
-            gdf.set_geometry("geometry"),
-            bayan[["cell_id", "geometry"]],
-            predicate="within",
-            how="left",
-        )
+        # Polygonize canopy pixels in raster CRS
+        poly_iter = shapes(binary, mask=(binary == 1), transform=transform)
+        polys = [shape(geom) for geom, v in poly_iter if v == 1]
 
-        # Retry unmatched polygons with 'intersects' (rare precision/edge cases)
-        unmatched = joined["cell_id"].isna()
-        if unmatched.any():
-            fix = gpd.sjoin(
-                gdf.loc[unmatched],
-                bayan[["cell_id", "geometry"]],
-                predicate="intersects",
-                how="left",
-            )["cell_id"].values
-            joined.loc[unmatched, "cell_id"] = fix
-            if joined["cell_id"].isna().any():
-                missing = int(joined["cell_id"].isna().sum())
-                raise RuntimeError(
-                    f"{city} {kind}: {missing} polygons didn't match any Bayan cell after retry."
-                )
+    if not polys:
+        # No canopy → zeros column
+        results[kind] = pd.Series(dtype="float64", name=kind)
+        continue
 
-        # Ensure no polygon matched multiple cells
-        counts = joined.groupby(joined.index)["cell_id"].nunique(dropna=True)
-        if (counts > 1).any():
-            n_multi = int((counts > 1).sum())
-            raise RuntimeError(
-                f"{city} {kind}: {n_multi} polygons matched multiple Bayan cells (split integrity issue)."
-            )
+    # Build GDF, dissolve (reduce feature count), project once to UTM
+    gdf = gpd.GeoDataFrame(geometry=polys, crs=src.crs)
+    dissolved = gdf.unary_union
+    parts = [dissolved] if dissolved.geom_type == "Polygon" else list(dissolved.geoms)
+    canopy = gpd.GeoDataFrame(geometry=parts, crs=gdf.crs).to_crs(utm)
 
-        # Compute area (m²) and aggregate by Bayan cell
-        joined["area_m2"] = joined.geometry.area
-        sums = (
-            joined.groupby("cell_id", dropna=False)["area_m2"]
-            .sum()
-            .rename(kind)
-        )
-        results[kind] = sums
+    # Overlay with Bayan grid in UTM to split by cells, then area by cell_id
+    bayan_utm = bayan[["cell_id", "geometry"]].copy()
+    canopy["geometry"] = canopy.geometry.buffer(0)
+    bayan_utm["geometry"] = bayan_utm.geometry.buffer(0)
 
+    split = gpd.overlay(canopy, bayan_utm, how="identity").explode(index_parts=False, ignore_index=True)
+    split["area_m2"] = split.geometry.area
+
+    sums = split.groupby("cell_id", dropna=False)["area_m2"].sum().rename(kind)
+    results[kind] = sums
+    
     # Merge ETH and Meta results onto Bayan attributes
     out = bayan_attrs.merge(
         results.get("ETH", pd.Series(name="ETH")),
