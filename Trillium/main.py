@@ -10,15 +10,15 @@ from shapely.geometry import shape
 # ----------------------------- CONFIG -----------------------------
 CITIES = {
     "Vancouver": {
-        "utm": "EPSG:32610",
+        "utm": "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs +type=crs",
         "bayan": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
     },
     "Winnipeg": {
-        "utm": "EPSG:32614",
+        "utm": "+proj=utm +zone=14 +datum=WGS84 +units=m +no_defs +type=crs",
         "bayan": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
     },
     "Ottawa": {
-        "utm": "EPSG:32618",
+        "utm": "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs +type=crs",
         "bayan": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
     },
 }
