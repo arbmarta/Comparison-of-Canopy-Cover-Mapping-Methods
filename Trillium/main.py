@@ -1,146 +1,93 @@
 import os
+import numpy as np
 import geopandas as gpd
-import pyproj
-from pyproj import CRS
-import pandas as pd
-from multiprocessing import Pool
 import rasterio
 from rasterio.mask import mask
 from rasterio.features import shapes
 from shapely.geometry import shape
+from multiprocessing import Pool
 
-# ----------------------------- CONFIG -----------------------------
-CITIES = {
+# Input boundaries (already in UTM)
+van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
+wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
+ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
+
+# Rasters
+rasters = {
     "Vancouver": {
-        "utm": "+proj=utm +zone=10 +datum=WGS84 +units=m +no_defs +type=crs",
-        "bayan": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
+        "ETH": '/scratch/arbmarta/ETH/Vancouver ETH.tif',
+        "Meta": '/scratch/arbmarta/Meta/Vancouver Meta.tif',
+        "LiDAR": '/scratch/arbmarta/LiDAR/Vancouver LiDAR.tif',
+        "bayan": van_bayan,
+        "epsg": "EPSG:32610",
     },
     "Winnipeg": {
-        "utm": "+proj=utm +zone=14 +datum=WGS84 +units=m +no_defs +type=crs",
-        "bayan": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
+        "ETH": '/scratch/arbmarta/ETH/Winnipeg ETH.tif',
+        "Meta": '/scratch/arbmarta/Meta/Winnipeg Meta.tif',
+        "LiDAR": '/scratch/arbmarta/LiDAR/Winnipeg LiDAR.tif',
+        "bayan": wpg_bayan,
+        "epsg": "EPSG:32614",
     },
     "Ottawa": {
-        "utm": "+proj=utm +zone=18 +datum=WGS84 +units=m +no_defs +type=crs",
-        "bayan": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
+        "ETH": '/scratch/arbmarta/ETH/Ottawa ETH.tif',
+        "Meta": '/scratch/arbmarta/Meta/Ottawa Meta.tif',
+        "LiDAR": '/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif',
+        "bayan": ott_bayan,
+        "epsg": "EPSG:32618",
     }
 }
 
-DATASETS = {
-    "ETH":  "/scratch/arbmarta/ETH/{city} ETH.tif",
-    "Meta": "/scratch/arbmarta/Meta/{city} Meta.tif",
-}
+OUT_DIR = "/scratch/arbmarta/Outputs"
+os.makedirs(OUT_DIR, exist_ok=True)
 
-OUT_CSV   = "/scratch/arbmarta/{city}_bayan_canopy_sums.csv"
+def raster_to_polygons(masked_arr, out_transform, nodata=None):
+    band = masked_arr[0]
+    valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
+    if nodata is not None:
+        valid &= (band != nodata)
+    mask_vals = valid & (band > 0)
+    geoms, vals = zip(*[
+        (shape(geom), float(val)) 
+        for geom, val in shapes(band, mask=mask_vals, transform=out_transform)
+        if val > 0
+    ])
+    return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-CELL_AREA_M2 = 120 * 120  # 14,400 m² per Bayan cell
+def process_city_source(args):
+    city, source, raster_path, bayan_gdf, utm_epsg = args
+    with rasterio.open(raster_path) as src:
+        masked, transform = mask(src, bayan_gdf.to_crs(src.crs).geometry, crop=True)
+        polygons = raster_to_polygons(masked, transform, src.nodata)
+        polygons.set_crs(src.crs, inplace=True)
 
-# -------------------------- CORE SUMMARIZER --------------------------
-def summarize_city_to_csv(city: str, cfg: dict, out_csv: str) -> None:
-    """
-    For a city: compute canopy area (m²) of split polygons for ETH and Meta,
-    sum by Bayan (120x120 m) cell, and write CSV with Bayan attributes + ETH + Meta
-    plus ETH_pct and Meta_pct (0–100). Includes integrity checks that each split
-    polygon matches exactly one Bayan cell (retrying unmatched with 'intersects').
-    """
-    utm = cfg["utm"]
-    bayan_path = cfg["bayan"]
+    # Reproject to UTM and overlay with bayan grid
+    polygons = polygons.to_crs(utm_epsg)
+    bayan_gdf = bayan_gdf.to_crs(utm_epsg)
+    clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
 
-    # Load Bayan grid (authoritative attributes) in UTM (meters)
-    bayan = (
-        gpd.read_file(bayan_path)
-        .to_crs(utm)
-        .reset_index(drop=False)
-        .rename(columns={"index": "cell_id"})
-    )
-    bayan_attrs = bayan.drop(columns="geometry").copy()
+    # Calculate area and percent
+    clipped["m2"] = clipped.geometry.area
+    if 'grid_id' not in clipped.columns:
+        clipped["grid_id"] = (clipped.geometry.centroid.x // 120).astype(int).astype(str) + "_" + (clipped.geometry.centroid.y // 120).astype(int).astype(str)
 
-    results = {}
+    summary = clipped.groupby("grid_id")["m2"].sum().reset_index(name="total_m2")
+    summary["percent_cover"] = (summary["total_m2"] / 14400) * 100
 
-    for kind in ["ETH", "Meta"]:
-        raster_path = DATASETS[kind].format(city=city)
-        if not os.path.exists(raster_path):
-            raise FileNotFoundError(f"{city} {kind}: raster not found at {raster_path}")
+    # Write CSV
+    out_csv = os.path.join(OUT_DIR, f"{city}_{source}_percent_cover.csv")
+    summary.to_csv(out_csv, index=False)
+    print(f"Saved: {out_csv}")
 
-        with rasterio.open(raster_path) as src:
-            # Mask raster to the city grid in raster CRS (cheap)
-            bayan_src = bayan.to_crs(src.crs)
-            masked, transform = mask(src, bayan_src.geometry, crop=True, filled=True, nodata=0)
-            raster_crs = src.crs  # capture before leaving the context
+def main():
+    tasks = []
+    for city, config in rasters.items():
+        for source, path in config.items():
+            if source in ["bayan", "epsg"]:
+                continue
+            tasks.append((city, source, path, config["bayan"], config["epsg"]))
 
-        # Threshold to canopy (>= 2 → 1, else 0)
-        binary = (masked[0] >= 2).astype("uint8")
-
-        # Polygonize canopy pixels in raster CRS
-        poly_iter = shapes(binary, mask=(binary == 1), transform=transform)
-        polys = [shape(geom) for geom, v in poly_iter if v == 1]
-
-        if not polys:
-            # No canopy → zeros column
-            results[kind] = pd.Series(dtype="float64", name=kind)
-            continue
-
-        # Build GDF, dissolve (reduce feature count), project once to UTM
-        gdf = gpd.GeoDataFrame(geometry=polys, crs=raster_crs)
-        dissolved = gdf.unary_union
-        parts = [dissolved] if dissolved.geom_type == "Polygon" else list(dissolved.geoms)
-        canopy = gpd.GeoDataFrame(geometry=parts, crs=raster_crs).to_crs(utm)
-
-        # Overlay with Bayan grid in UTM to split by cells, then area by cell_id
-        bayan_utm = bayan[["cell_id", "geometry"]].copy()
-        canopy["geometry"] = canopy.geometry.buffer(0)
-        bayan_utm["geometry"] = bayan_utm.geometry.buffer(0)
-
-        split = gpd.overlay(canopy, bayan_utm, how="identity").explode(index_parts=False, ignore_index=True)
-        split["area_m2"] = split.geometry.area
-
-        sums = split.groupby("cell_id", dropna=False)["area_m2"].sum().rename(kind)
-        results[kind] = sums
-
-    # ---- merge ETH/Meta and write CSV (after the loop) ----
-    out = bayan_attrs.merge(
-        results.get("ETH", pd.Series(name="ETH")),
-        left_on="cell_id",
-        right_index=True,
-        how="left",
-    )
-    out = out.merge(
-        results.get("Meta", pd.Series(name="Meta")),
-        left_on="cell_id",
-        right_index=True,
-        how="left",
-    )
-
-    # Fill NaNs with 0 (no canopy in that cell)
-    for col in ["ETH", "Meta"]:
-        if col in out.columns:
-            out[col] = out[col].fillna(0.0)
-        else:
-            out[col] = 0.0
-
-    # Percentage columns (0–100)
-    out["ETH_pct"]  = (out["ETH"]  / CELL_AREA_M2) * 100
-    out["Meta_pct"] = (out["Meta"] / CELL_AREA_M2) * 100
-    out[["ETH_pct", "Meta_pct"]] = out[["ETH_pct", "Meta_pct"]].clip(lower=0, upper=100)
-
-    out.to_csv(out_csv, index=False)
-    print(f"✅ {city}: wrote {out_csv} with {len(out)} rows")
-
-# ------------------------------ MAIN ------------------------------
-def _run_city(args):
-    city, cfg = args
-    summarize_city_to_csv(city, cfg, OUT_CSV.format(city=city))
-    return city
+    with Pool(processes=9) as pool:
+        pool.map(process_city_source, tasks)
 
 if __name__ == "__main__":
-    # Recommended for Trillium: avoid OpenMP over-subscription
-    os.environ["OMP_NUM_THREADS"] = "1"
-    # Ensure PROJ data is available to pyproj/GeoPandas
-    os.environ["PROJ_DATA"] = "/cvmfs/soft.computecanada.ca/easybuild/software/2020/Core/proj/9.1.1/share/proj"
-
-    jobs = list(CITIES.items())  # [("Vancouver", {...}), ("Winnipeg", {...}), ("Ottawa", {...})]
-
-    # Fixed number of processes for Pool (match your Slurm --cpus-per-task)
-    pool_processes = 6
-    with Pool(processes=pool_processes) as pool:
-        for _ in pool.imap_unordered(_run_city, jobs):
-            pass
+    main()
