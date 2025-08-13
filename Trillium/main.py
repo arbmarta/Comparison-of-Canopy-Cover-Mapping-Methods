@@ -42,15 +42,26 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     band = masked_arr[0]
+
+    # Build a validity mask: non-nodata, non-NaN, and > 0
     valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
     if nodata is not None:
         valid &= (band != nodata)
-    mask_vals = valid & (band > 0)
-    geoms, vals = zip(*[
-        (shape(geom), float(val)) 
+
+    # Apply threshold: only values ≥ 2
+    mask_vals = valid & (band >= 2)
+
+    # Polygonize using rasterio.features.shapes
+    results = [
+        (shape(geom), float(val))
         for geom, val in shapes(band, mask=mask_vals, transform=out_transform)
-        if val > 0
-    ])
+        if val >= 2  # redundant but safe
+    ]
+
+    if not results:
+        return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=None)
+
+    geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
 def process_city_source(args):
