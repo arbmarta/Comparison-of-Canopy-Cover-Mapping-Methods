@@ -62,7 +62,6 @@ def process_city_source(args):
 
     # Reproject to UTM and overlay with bayan grid
     polygons = polygons.to_crs(utm_epsg)
-    bayan_gdf = bayan_gdf.to_crs(utm_epsg)
     clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
 
     # Calculate area and percent
