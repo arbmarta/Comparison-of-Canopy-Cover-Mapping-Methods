@@ -5,7 +5,6 @@ import rasterio
 from rasterio.mask import mask
 from rasterio.features import shapes
 from shapely.geometry import shape
-from shapely.geometry import Point
 from multiprocessing import Pool
 import networkx as nx
 
@@ -102,43 +101,58 @@ def compute_iic_nh_from_patches(polygon_df, grid_area=14400, threshold=0.6):
 
 def process_city_source(args):
     city, source, raster_path, bayan_gdf, utm_epsg = args
+
+    # Ensure grid_id exists in the bayan grid
+    if 'grid_id' not in bayan_gdf.columns:
+        bayan_gdf = bayan_gdf.copy()
+        bayan_gdf["grid_id"] = (
+            (bayan_gdf.geometry.centroid.x // 120).astype(int).astype(str) + "_" +
+            (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
+        )
+
+    grid_ids_df = bayan_gdf[["grid_id"]].drop_duplicates()
+
     with rasterio.open(raster_path) as src:
         masked, transform = mask(src, bayan_gdf.to_crs(src.crs).geometry, crop=True)
         polygons = raster_to_polygons(masked, transform, src.nodata)
+        if polygons.empty:
+            summary = grid_ids_df.copy()
+            summary["total_m2"] = summary["polygon_count"] = summary["total_perimeter"] = 0
+            summary["percent_cover"] = summary["mean_patch_size"] = summary["patch_density"] = 0
+            summary["area_cv"] = summary["perimeter_cv"] = summary["IIC"] = summary["NH"] = 0
+            out_csv = os.path.join(OUT_DIR, f"{city}_{source}_percent_cover.csv")
+            summary.to_csv(out_csv, index=False)
+            print(f"Saved (empty): {out_csv}")
+            return
+
         polygons.set_crs(src.crs, inplace=True)
+        if polygons.crs != utm_epsg:
+            polygons = polygons.to_crs(utm_epsg)
 
-    if polygons.crs != utm_epsg:
-        polygons = polygons.to_crs(utm_epsg)
-    clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
-
-    all_grids = bayan_gdf.copy()
-    if 'grid_id' not in all_grids.columns:
-      all_grids["grid_id"] = (all_grids.geometry.centroid.x // 120).astype(int).astype(str) + "_" + (all_grids.geometry.centroid.y // 120).astype(int).astype(str)
-    grid_ids_df = all_grids[["grid_id"]].drop_duplicates()
-
-  
+    # Spatial join to assign each polygon to its grid cell by inheriting grid_id
+    clipped = gpd.sjoin(polygons, bayan_gdf[["grid_id", "geometry"]], how="inner", predicate="intersects")
     clipped["m2"] = clipped.geometry.area
-    if 'grid_id' not in clipped.columns:
-        clipped["grid_id"] = (clipped.geometry.centroid.x // 120).astype(int).astype(str) + "_" + (clipped.geometry.centroid.y // 120).astype(int).astype(str)
-
     clipped["perimeter"] = clipped.geometry.length
 
+    # Group and summarize
     summary = clipped.groupby("grid_id").agg(
         total_m2=("m2", "sum"),
         polygon_count=("geometry", "count"),
         total_perimeter=("perimeter", "sum")
     ).reset_index()
 
-    # Calculate CVs for area and perimeter
+    # Calculate CVs
     area_cv = clipped.groupby("grid_id")["m2"].agg(lambda x: x.std() / x.mean() if x.mean() > 0 else 0).rename("area_cv")
     perimeter_cv = clipped.groupby("grid_id")["perimeter"].agg(lambda x: x.std() / x.mean() if x.mean() > 0 else 0).rename("perimeter_cv")
 
     summary = summary.merge(area_cv, on="grid_id", how="left").merge(perimeter_cv, on="grid_id", how="left")
 
+    # Additional metrics
     summary["percent_cover"] = (summary["total_m2"] / 14400) * 100
     summary["mean_patch_size"] = summary["total_m2"] / summary["polygon_count"]
     summary["patch_density"] = summary["polygon_count"] / 14400
 
+    # Fragmentation metrics
     if source == "LiDAR":
         frag_df = (
             clipped.groupby("grid_id")
@@ -147,12 +161,8 @@ def process_city_source(args):
         )
         summary = summary.merge(frag_df, on="grid_id", how="left")
 
-    out_csv = os.path.join(OUT_DIR, f"{city}_{source}_percent_cover.csv")
-
-    # Merge to include all grid IDs (even empty ones)
+    # Fill in missing grid cells
     summary = grid_ids_df.merge(summary, on="grid_id", how="left")
-    
-    # Fill missing values for empty grid cells
     summary.fillna({
         "total_m2": 0,
         "polygon_count": 0,
@@ -165,25 +175,42 @@ def process_city_source(args):
         "IIC": 0,
         "NH": 0,
     }, inplace=True)
-    
-    summary.to_csv(out_csv, index=False)
-    print(f"Saved: {out_csv}")
+
+    summary["city"] = city
+    return summary
 
 def main():
     tasks = []
     for city, config in rasters.items():
-        for source, path in config.items():
-            if source in ["bayan", "epsg"]:
-                continue
-            tasks.append((
-                city,
-                source,
-                path,
-                config["bayan"].to_crs(config["epsg"]),
-                config["epsg"]
-            ))
-    with Pool(processes=3) as pool:
-        pool.map(process_city_source, tasks)
+        source = "LiDAR"  # Only processing LiDAR
+        path = config[source]
+        tasks.append((
+            city,
+            source,
+            path,
+            config["bayan"].to_crs(config["epsg"]),
+            config["epsg"]
+        ))
+
+    with Pool(processes=os.cpu_count()) as pool:
+        all_summaries = pool.map(process_city_source, tasks)
+
+    # Filter out empty results
+    all_summaries = [s for s in all_summaries if s is not None]
+
+    # Concatenate all city summaries into one DataFrame
+    merged_df = gpd.pd.concat(all_summaries, ignore_index=True)
+
+    # Reorder columns (drop 'source', since it's all LiDAR)
+    cols = ["city", "grid_id", "total_m2", "percent_cover", "polygon_count",
+            "mean_patch_size", "patch_density", "total_perimeter",
+            "area_cv", "perimeter_cv", "IIC", "NH"]
+    merged_df = merged_df[cols]
+
+    # Save to single CSV
+    out_path = os.path.join(OUT_DIR, "LiDAR.csv")
+    merged_df.to_csv(out_path, index=False)
+    print(f"Saved: {out_path}")
 
 if __name__ == "__main__":
     main()
