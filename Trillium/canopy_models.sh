@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=3
-#SBATCH --cpus-per-task=
-#SBATCH --time=02:00:00
-#SBATCH --job-name=main
-#SBATCH --output=/scratch/arbmarta/main_%j.out
-#SBATCH --error=/scratch/arbmarta/main_%j.err
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=3
+#SBATCH --time=03:00:00
+#SBATCH --job-name=canopy_models
+#SBATCH --output=/scratch/arbmarta/canopy_models.out
+#SBATCH --error=/scratch/arbmarta/canopy_models.err
 
 # Run your Python script
 source /home/arbmarta/.virtualenvs/myenv/bin/activate
-python /scratch/arbmarta/main.py
+python /scratch/arbmarta/canopy_models.py
