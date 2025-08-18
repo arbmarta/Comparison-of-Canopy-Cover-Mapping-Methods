@@ -7,35 +7,31 @@ from rasterio.features import shapes
 from shapely.geometry import shape
 from multiprocessing import Pool
 
-# Input boundaries (already in UTM)
-van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
-wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
-ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
-
-# Rasters (excluding LiDAR)
-rasters = {
-    "Vancouver": {
-        "ETH": '/scratch/arbmarta/ETH/Vancouver ETH.tif',
-        "Meta": '/scratch/arbmarta/Meta/Vancouver Meta.tif',
-        "bayan": van_bayan,
-        "epsg": "EPSG:32610",
-    },
-    "Winnipeg": {
-        "ETH": '/scratch/arbmarta/ETH/Winnipeg ETH.tif',
-        "Meta": '/scratch/arbmarta/Meta/Winnipeg Meta.tif',
-        "bayan": wpg_bayan,
-        "epsg": "EPSG:32614",
-    },
-    "Ottawa": {
-        "ETH": '/scratch/arbmarta/ETH/Ottawa ETH.tif',
-        "Meta": '/scratch/arbmarta/Meta/Ottawa Meta.tif',
-        "bayan": ott_bayan,
-        "epsg": "EPSG:32618",
-    }
-}
-
+# Constants
 OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
+
+# Input boundaries
+bayan_configs = {
+    "Vancouver": {
+        "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
+        "epsg": "EPSG:32610",
+        "ETH": "/scratch/arbmarta/ETH/Vancouver ETH.tif",
+        "Meta": "/scratch/arbmarta/Meta/Vancouver Meta.tif"
+    },
+    "Winnipeg": {
+        "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
+        "epsg": "EPSG:32614",
+        "ETH": "/scratch/arbmarta/ETH/Winnipeg ETH.tif",
+        "Meta": "/scratch/arbmarta/Meta/Winnipeg Meta.tif"
+    },
+    "Ottawa": {
+        "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
+        "epsg": "EPSG:32618",
+        "ETH": "/scratch/arbmarta/ETH/Ottawa ETH.tif",
+        "Meta": "/scratch/arbmarta/Meta/Ottawa Meta.tif"
+    }
+}
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     band = masked_arr[0]
@@ -53,68 +49,64 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def process_city_source(args):
-    city, source, raster_path, bayan_gdf, utm_epsg = args
+def process_grid(args):
+    city, source, raster_path, grid, grid_id, grid_meta, epsg = args
 
-    with rasterio.open(raster_path) as src:
-        masked, transform = mask(src, bayan_gdf.to_crs(src.crs).geometry, crop=True)
-        polygons = raster_to_polygons(masked, transform, src.nodata)
-        if not polygons.empty:
-            polygons.set_crs(src.crs, inplace=True)
-            if polygons.crs != utm_epsg:
-                polygons = polygons.to_crs(utm_epsg)
-            clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
-            clipped["m2"] = clipped.geometry.area
-            summary = clipped.groupby("grid_id")["m2"].sum().reset_index(name="total_m2")
-        else:
-            summary = gpd.pd.DataFrame(columns=["grid_id", "total_m2"])
+    try:
+        with rasterio.open(raster_path) as src:
+            out_image, out_transform = mask(src, [grid], crop=True)
+            polygons = raster_to_polygons(out_image, out_transform, src.nodata)
+            if not polygons.empty:
+                polygons.set_crs(src.crs, inplace=True)
+                polygons = polygons.to_crs(epsg)
+                clipped = gpd.overlay(polygons, gpd.GeoDataFrame(geometry=[grid], crs=epsg), how="intersection")
+                total_m2 = clipped.geometry.area.sum()
+            else:
+                total_m2 = 0
+    except Exception:
+        total_m2 = 0
 
-    # Create grid_id in bayan_gdf and merge
-    bayan_gdf = bayan_gdf.copy()
-    bayan_gdf["grid_id"] = (
-        (bayan_gdf.geometry.centroid.x // 120).astype(int).astype(str) + "_" +
-        (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
-    )
-    bayan_meta = bayan_gdf.drop(columns="geometry").drop_duplicates(subset="grid_id")
-
-    merged = bayan_meta.merge(summary, on="grid_id", how="left")
-    merged["total_m2"] = merged["total_m2"].fillna(0)
-    merged["percent_cover"] = (merged["total_m2"] / 14400) * 100
-
-    # Add traceability columns
-    merged["source"] = source
-    merged["city"] = city
-
-    return merged
+    percent_cover = (total_m2 / 14400) * 100
+    result = grid_meta.copy()
+    result["total_m2"] = total_m2
+    result["percent_cover"] = percent_cover
+    result["city"] = city
+    result["source"] = source
+    result["grid_id"] = grid_id
+    return result
 
 def main():
     tasks = []
-    for city, config in rasters.items():
-        for source, path in config.items():
-            if source in ["bayan", "epsg", "LiDAR"]:
-                continue
-            tasks.append((
-                city,
-                source,
-                path,
-                config["bayan"].to_crs(config["epsg"]),
-                config["epsg"]
-            ))
+
+    for city, config in bayan_configs.items():
+        epsg = config["epsg"]
+        bayan_gdf = gpd.read_file(config["shp"]).to_crs(epsg)
+        bayan_gdf["grid_id"] = (
+            (bayan_gdf.geometry.centroid.x // 120).astype(int).astype(str) + "_" +
+            (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
+        )
+        bayan_meta = bayan_gdf.drop(columns="geometry")
+
+        for source in ["ETH", "Meta"]:
+            raster_path = config[source]
+            for i, row in bayan_gdf.iterrows():
+                tasks.append((
+                    city,
+                    source,
+                    raster_path,
+                    row.geometry,
+                    row["grid_id"],
+                    bayan_meta.iloc[[i]].reset_index(drop=True),
+                    epsg
+                ))
 
     with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(process_city_source, tasks)
+        results = pool.map(process_grid, tasks)
 
-    # Filter out any None results
-    results = [df for df in results if df is not None]
-
-    # Combine all into one DataFrame
     if results:
-        all_results = gpd.pd.concat(results, ignore_index=True)
-        out_csv = os.path.join(OUT_DIR, "All_Cities_Percent_Cover.csv")
-        all_results.to_csv(out_csv, index=False)
-        print(f"Saved merged CSV: {out_csv}")
-    else:
-        print("No results to save.")
+        df = gpd.pd.concat(results, ignore_index=True)
+        df.to_csv(os.path.join(OUT_DIR, "All_Cities_Percent_Cover.csv"), index=False)
+        print("Saved: All_Cities_Percent_Cover.csv")
 
 if __name__ == "__main__":
     main()
