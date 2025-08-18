@@ -66,28 +66,37 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
 
 def process_city_source(args):
     city, source, raster_path, bayan_gdf, utm_epsg = args
+
     with rasterio.open(raster_path) as src:
         masked, transform = mask(src, bayan_gdf.to_crs(src.crs).geometry, crop=True)
         polygons = raster_to_polygons(masked, transform, src.nodata)
-        polygons.set_crs(src.crs, inplace=True)
+        if not polygons.empty:
+            polygons.set_crs(src.crs, inplace=True)
+            if polygons.crs != utm_epsg:
+                polygons = polygons.to_crs(utm_epsg)
+            clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
+            clipped["m2"] = clipped.geometry.area
+            summary = clipped.groupby("grid_id")["m2"].sum().reset_index(name="total_m2")
+        else:
+            summary = gpd.pd.DataFrame(columns=["grid_id", "total_m2"])
 
-    # Reproject to UTM and overlay with bayan grid
-    if polygons.crs != utm_epsg:
-       polygons = polygons.to_crs(utm_epsg)
-    clipped = gpd.overlay(polygons, bayan_gdf, how="intersection")
+    # Create grid_id in bayan_gdf and merge
+    bayan_gdf = bayan_gdf.copy()
+    bayan_gdf["grid_id"] = (
+        (bayan_gdf.geometry.centroid.x // 120).astype(int).astype(str) + "_" +
+        (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
+    )
+    bayan_meta = bayan_gdf.drop(columns="geometry").drop_duplicates(subset="grid_id")
 
-    # Calculate area and percent
-    clipped["m2"] = clipped.geometry.area
-    if 'grid_id' not in clipped.columns:
-        clipped["grid_id"] = (clipped.geometry.centroid.x // 120).astype(int).astype(str) + "_" + (clipped.geometry.centroid.y // 120).astype(int).astype(str)
+    merged = bayan_meta.merge(summary, on="grid_id", how="left")
+    merged["total_m2"] = merged["total_m2"].fillna(0)
+    merged["percent_cover"] = (merged["total_m2"] / 14400) * 100
 
-    summary = clipped.groupby("grid_id")["m2"].sum().reset_index(name="total_m2")
-    summary["percent_cover"] = (summary["total_m2"] / 14400) * 100
+    # Add traceability columns
+    merged["source"] = source
+    merged["city"] = city
 
-    # Write CSV
-    out_csv = os.path.join(OUT_DIR, f"{city}_{source}_percent_cover.csv")
-    summary.to_csv(out_csv, index=False)
-    print(f"Saved: {out_csv}")
+    return merged
 
 def main():
     tasks = []
