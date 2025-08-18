@@ -182,7 +182,7 @@ def main():
                 config["bayan"].to_crs(config["epsg"]),
                 config["epsg"]
             ))
-    with Pool(processes=9) as pool:
+    with Pool(processes=3) as pool:
         pool.map(process_city_source, tasks)
 
 if __name__ == "__main__":
