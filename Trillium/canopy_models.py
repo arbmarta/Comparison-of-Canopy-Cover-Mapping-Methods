@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from multiprocessing import Pool
 import networkx as nx
 import pandas as pd
+from tqdm import tqdm
 
 # Input boundaries
 van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
@@ -121,7 +122,7 @@ def main():
             tasks.append((city, raster, row.geometry, row.grid_id, epsg))
 
     with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(process_grid, tasks)
+        results = list(tqdm(pool.imap_unordered(process_grid, tasks), total=len(tasks)))
 
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "total_m2", "percent_cover", "polygon_count",
