@@ -36,39 +36,62 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def compute_nh_from_patches(polygon_df, threshold=0.6):
-    if len(polygon_df) == 0:
-        return pd.Series({"NH": 0.0})
+def compute_fragmentation_metrics(polygon_df, grid_area=14400):
+    if polygon_df.empty:
+        return pd.Series({
+            "CLUMPY": 0, "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0
+        })
 
-    n = len(polygon_df)
-    G = nx.Graph()
-    G.add_nodes_from(range(n))
-    for i in range(n):
-        for j in range(i + 1, n):
-            d = polygon_df.geometry.iloc[i].distance(polygon_df.geometry.iloc[j])
-            if d <= threshold:
-                G.add_edge(i, j)
-
-    h_sum = 0
-    for i in range(n):
-        try:
-            spl = nx.single_source_shortest_path_length(G, source=i)
-        except:
-            continue
-        for j, l in spl.items():
-            if i != j and l > 0:
-                h_sum += 1 / l
-    H = 0.5 * h_sum
-
-    if n >= 2:
-        H_chain = sum((n - k) / k for k in range(1, n))
-        H_planar = (n * (n + 5)) / 4.0 - 3.0
-        NH = (H - H_chain) / (H_planar - H_chain) if H_planar != H_chain else 0
-        NH = max(0.0, min(1.0, NH))
+    # CLUMPY (approximate): P = percent of shared edges, using bounding boxes for simplicity
+    total_adj = 0
+    for i in range(len(polygon_df)):
+        for j in range(i + 1, len(polygon_df)):
+            if polygon_df.geometry.iloc[i].touches(polygon_df.geometry.iloc[j]):
+                total_adj += 1
+    pi = polygon_df.geometry.area.sum() / grid_area
+    gii = total_adj / (len(polygon_df) * (len(polygon_df) - 1) / 2) if len(polygon_df) > 1 else 0
+    if pi > 0:
+        clumpy = (gii - pi) / (1 - pi) if gii >= pi else (gii - pi) / pi
     else:
-        NH = 0.0
+        clumpy = 0
 
-    return pd.Series({"NH": NH})
+    # PAFRAC
+    areas = polygon_df.geometry.area
+    perimeters = polygon_df.geometry.length
+    if (areas > 0).all() and (perimeters > 0).all():
+        logs = np.log(perimeters) / np.log(areas)
+        pafrac = 2 * logs.mean()
+    else:
+        pafrac = 0
+
+    # nLSI & LSI
+    E = polygon_df.geometry.length.sum()
+    A = polygon_df.geometry.area.sum()
+    lsi = E / (4 * np.sqrt(A)) if A > 0 else 0
+    max_lsi = (2 * np.sqrt(grid_area)) / (4 * np.sqrt(A)) if A > 0 else 1
+    nlsi = (lsi - 1) / (max_lsi - 1) if max_lsi != 1 else 0
+
+    # CAI_AM (core area index, area weighted)
+    buffer_width = 1  # 1 m edge buffer to define core
+    cores = polygon_df.geometry.buffer(-buffer_width)
+    cores = cores[cores.area > 0]
+    if not cores.empty:
+        core_areas = cores.area
+        cai_am = core_areas.sum() / A
+    else:
+        cai_am = 0
+
+    # Edge Density (ED)
+    ed = E / grid_area * 10000  # meters per hectare
+
+    return pd.Series({
+        "CLUMPY": clumpy,
+        "PAFRAC": pafrac,
+        "nLSI": nlsi,
+        "CAI_AM": cai_am,
+        "LSI": lsi,
+        "ED": ed
+    })
 
 def process_grid(args):
     city, raster_path, grid_geom, grid_id, epsg = args
@@ -99,15 +122,16 @@ def process_grid(args):
                 result["area_cv"] = clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0
                 result["perimeter_cv"] = clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
 
-                frag_metrics = compute_nh_from_patches(clipped)
+                frag_metrics = compute_fragmentation_metrics(clipped)
                 result.update(frag_metrics)
     except:
         result.update({
             "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
-            "area_cv": 0, "perimeter_cv": 0, "NH": 0
+            "area_cv": 0, "perimeter_cv": 0,
+            "CLUMPY": 0, "PAFRAC": 0, "nLSI": 0,
+            "CAI_AM": 0, "LSI": 0, "ED": 0
         })
-
     return result
 
 def main():
@@ -127,7 +151,8 @@ def main():
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "total_m2", "percent_cover", "polygon_count",
             "mean_patch_size", "patch_density", "total_perimeter",
-            "area_cv", "perimeter_cv", "NH"]
+            "area_cv", "perimeter_cv", "CLUMPY", "PAFRAC", "nLSI", 
+            "CAI_AM", "LSI", "ED"]
     df = df[cols]
     df.to_csv(os.path.join(OUT_DIR, "LiDAR.csv"), index=False)
     print("Saved: LiDAR.csv")
