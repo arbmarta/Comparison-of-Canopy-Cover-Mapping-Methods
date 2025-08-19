@@ -35,22 +35,18 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def compute_iic_nh_from_patches(polygon_df, grid_area=14400, threshold=0.6):
+def compute_nh_from_patches(polygon_df, threshold=0.6):
     if len(polygon_df) == 0:
-        return pd.Series({"IIC": 0.0, "NH": 0.0})
-    areas = polygon_df.geometry.area.values
-    n = len(areas)
+        return pd.Series({"NH": 0.0})
+
+    n = len(polygon_df)
     G = nx.Graph()
     G.add_nodes_from(range(n))
     for i in range(n):
-        for j in range(i+1, n):
+        for j in range(i + 1, n):
             d = polygon_df.geometry.iloc[i].distance(polygon_df.geometry.iloc[j])
             if d <= threshold:
                 G.add_edge(i, j)
-
-    iic_sum = sum((areas[i] * areas[j]) / (1 + nx.shortest_path_length(G, source=i, target=j))
-                  for i in range(n) for j in range(n) if i == j or nx.has_path(G, i, j))
-    IIC = iic_sum / (grid_area ** 2)
 
     h_sum = 0
     for i in range(n):
@@ -71,7 +67,7 @@ def compute_iic_nh_from_patches(polygon_df, grid_area=14400, threshold=0.6):
     else:
         NH = 0.0
 
-    return pd.Series({"IIC": IIC, "NH": NH})
+    return pd.Series({"NH": NH})
 
 def process_grid(args):
     city, raster_path, grid_geom, grid_id, epsg = args
@@ -84,7 +80,7 @@ def process_grid(args):
                 result.update({
                     "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
                     "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
-                    "area_cv": 0, "perimeter_cv": 0, "IIC": 0, "NH": 0
+                    "area_cv": 0, "perimeter_cv": 0, "NH": 0
                 })
             else:
                 polygons.set_crs(src.crs, inplace=True)
@@ -102,7 +98,7 @@ def process_grid(args):
                 result["area_cv"] = clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0
                 result["perimeter_cv"] = clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
 
-                frag_metrics = compute_iic_nh_from_patches(clipped)
+                frag_metrics = compute_nh_from_patches(clipped)
                 result.update(frag_metrics)
     except:
         result.update({
@@ -130,7 +126,7 @@ def main():
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "total_m2", "percent_cover", "polygon_count",
             "mean_patch_size", "patch_density", "total_perimeter",
-            "area_cv", "perimeter_cv", "IIC", "NH"]
+            "area_cv", "perimeter_cv", "NH"]
     df = df[cols]
     df.to_csv(os.path.join(OUT_DIR, "LiDAR.csv"), index=False)
     print("Saved: LiDAR.csv")
