@@ -105,7 +105,7 @@ def process_grid(args):
         result.update({
             "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
-            "area_cv": 0, "perimeter_cv": 0, "IIC": 0, "NH": 0
+            "area_cv": 0, "perimeter_cv": 0, "NH": 0
         })
 
     return result
