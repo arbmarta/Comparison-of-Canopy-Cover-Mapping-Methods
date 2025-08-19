@@ -1,266 +1,157 @@
 import pandas as pd
-from sklearn.metrics import mean_squared_error
-from scipy.spatial.distance import jensenshannon
 import numpy as np
-from scipy.stats import pearsonr, spearmanr
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-## ------------------------------------- IMPORT AND BASIC CANOPY COVER CALCULATION -------------------------------------
+df_lidar = pd.read_csv('LiDAR.csv')
+df_cc = pd.read_csv('All_Cities_Percent_Cover.csv')
+
+## -------------------------------------------- DATASET IMPORT AND HANDLING --------------------------------------------
 #region
 
-# Import the datasets
-van_eth = pd.read_csv('Outputs/Vancouver_ETH.csv')
-van_meta = pd.read_csv('Outputs/Vancouver_Meta.csv')
-van_lidar = pd.read_csv('Outputs/Vancouver_LiDAR.csv')
+# ------------ Handle the canopy cover dataset ------------
+#region
 
-win_eth = pd.read_csv('Outputs/Winnipeg_ETH.csv')
-win_meta = pd.read_csv('Outputs/Winnipeg_Meta.csv')
-win_lidar = pd.read_csv('Outputs/Winnipeg_LiDAR.csv')
+# Rename the bayan percent canopy cover column
+df_cc = df_cc.rename(columns={"pred": "bayan_percent_cover"})
 
-ott_eth = pd.read_csv('Outputs/Ottawa_ETH.csv')
-ott_meta = pd.read_csv('Outputs/Ottawa_Meta.csv')
-ott_lidar = pd.read_csv('Outputs/Ottawa_LiDAR.csv')
+# Select which columns to keep
+df_cc = df_cc[['city', 'grid_id', 'bayan_percent_cover', 'source', 'total_m2',
+               'percent_cover']]
 
-# Rename columns - percent_cover
-van_eth.rename(columns={'percent_cover': 'ETH_percent_cover'}, inplace=True)
-van_meta.rename(columns={'percent_cover': 'Meta_percent_cover'}, inplace=True)
-van_lidar.rename(columns={'percent_cover': 'LiDAR_percent_cover'}, inplace=True)
+# Convert column source to lowercase in-place
+df_cc['source'] = df_cc['source'].str.strip().str.lower()
 
-win_eth.rename(columns={'percent_cover': 'ETH_percent_cover'}, inplace=True)
-win_meta.rename(columns={'percent_cover': 'Meta_percent_cover'}, inplace=True)
-win_lidar.rename(columns={'percent_cover': 'LiDAR_percent_cover'}, inplace=True)
+# Keep one Bayan_percent_cover and one city per grid_id
+bayan = df_cc[['grid_id', 'bayan_percent_cover']].drop_duplicates()
+city = df_cc[['grid_id', 'city']].drop_duplicates()
 
-ott_eth.rename(columns={'percent_cover': 'ETH_percent_cover'}, inplace=True)
-ott_meta.rename(columns={'percent_cover': 'Meta_percent_cover'}, inplace=True)
-ott_lidar.rename(columns={'percent_cover': 'LiDAR_percent_cover'}, inplace=True)
+# Pivot Meta/ETH
+df_wide = df_cc.pivot(
+    index="grid_id",
+    columns="source",
+    values=["total_m2", "percent_cover"]
+)
 
-# Rename columns - total_m2
-van_eth.rename(columns={'total_m2': 'ETH_total_m2'}, inplace=True)
-van_meta.rename(columns={'total_m2': 'Meta_total_m2'}, inplace=True)
-van_lidar.rename(columns={'total_m2': 'LiDAR_total_m2'}, inplace=True)
+# Flatten multi-level columns
+df_wide.columns = [f"{src}_{val}" for val, src in df_wide.columns]
+df_wide = df_wide.reset_index()
 
-win_eth.rename(columns={'total_m2': 'ETH_total_m2'}, inplace=True)
-win_meta.rename(columns={'total_m2': 'Meta_total_m2'}, inplace=True)
-win_lidar.rename(columns={'total_m2': 'LiDAR_total_m2'}, inplace=True)
+# Merge Bayan_percent_cover and city back
+df_wide = df_wide.merge(bayan, on="grid_id", how="left")
+df_wide = df_wide.merge(city, on="grid_id", how="left")
 
-ott_eth.rename(columns={'total_m2': 'ETH_total_m2'}, inplace=True)
-ott_meta.rename(columns={'total_m2': 'Meta_total_m2'}, inplace=True)
-ott_lidar.rename(columns={'total_m2': 'LiDAR_total_m2'}, inplace=True)
+df_wide = df_wide[['city', 'grid_id', 'bayan_percent_cover', 'meta_total_m2', 'eth_total_m2', 'meta_percent_cover',
+                'eth_percent_cover']]
 
-# Merge on 'grid_id' for each city and simplify columns
-van_merged = van_eth.merge(van_meta, on='grid_id', how='outer').merge(van_lidar, on='grid_id', how='outer')
-van_merged = van_merged[[
-    'grid_id', 'pred',
-    'ETH_total_m2', 'ETH_percent_cover',
-    'Meta_total_m2', 'Meta_percent_cover',
-    'LiDAR_total_m2', 'LiDAR_percent_cover'
-]]
+#endregion
 
-win_merged = win_eth.merge(win_meta, on='grid_id', how='outer').merge(win_lidar, on='grid_id', how='outer')
-win_merged = win_merged[[
-    'grid_id', 'pred',
-    'ETH_total_m2', 'ETH_percent_cover',
-    'Meta_total_m2', 'Meta_percent_cover',
-    'LiDAR_total_m2', 'LiDAR_percent_cover'
-]]
+# ------------ Handle the LiDAR dataset ------------
+#region
 
-ott_merged = ott_eth.merge(ott_meta, on='grid_id', how='outer').merge(ott_lidar, on='grid_id', how='outer')
-ott_merged = ott_merged[[
-    'grid_id', 'pred',
-    'ETH_total_m2', 'ETH_percent_cover',
-    'Meta_total_m2', 'Meta_percent_cover',
-    'LiDAR_total_m2', 'LiDAR_percent_cover'
-]]
+# Rename the total m2 and percent canopy cover columns
+df_lidar = df_lidar.rename(columns={"total_m2": "lidar_total_m2"})
+df_lidar = df_lidar.rename(columns={"percent_cover": "lidar_percent_cover"})
 
-# Rename 'pred' to 'Bayan_percent_cover' in each merged DataFrame
-van_merged.rename(columns={'pred': 'Bayan_percent_cover'}, inplace=True)
-win_merged.rename(columns={'pred': 'Bayan_percent_cover'}, inplace=True)
-ott_merged.rename(columns={'pred': 'Bayan_percent_cover'}, inplace=True)
+# Drop the city column
+df_lidar = df_lidar.drop(columns='city')
 
-# Compute city areas (120m x 120m grid cells)
-van_area = van_merged['grid_id'].nunique() * (120 * 120)
-win_area = win_merged['grid_id'].nunique() * (120 * 120)
-ott_area = ott_merged['grid_id'].nunique() * (120 * 120)
+# Merge df_lidar with df_wide
+df = df_wide.merge(df_lidar, on="grid_id", how="left")
 
-# Calculate overall canopy cover - rasters
-van_lidar_cc = van_merged['LiDAR_total_m2'].sum() / van_area * 100
-win_lidar_cc = win_merged['LiDAR_total_m2'].sum() / win_area * 100
-ott_lidar_cc = ott_merged['LiDAR_total_m2'].sum() / ott_area * 100
+#endregion
 
-van_meta_cc = van_merged['Meta_total_m2'].sum() / van_area * 100
-win_meta_cc = win_merged['Meta_total_m2'].sum() / win_area * 100
-ott_meta_cc = ott_merged['Meta_total_m2'].sum() / ott_area * 100
+#endregion
 
-van_eth_cc = van_merged['ETH_total_m2'].sum() / van_area * 100
-win_eth_cc = win_merged['ETH_total_m2'].sum() / win_area * 100
-ott_eth_cc = ott_merged['ETH_total_m2'].sum() / ott_area * 100
+## ------------------------------------------- CALCULATE TOTAL CANOPY COVER --------------------------------------------
+#region
 
-# Calculate overall canopy cover - Bayan
-van_merged['Bayan_total_m2'] = van_merged['Bayan_percent_cover'] / 100 * (120 * 120)
-win_merged['Bayan_total_m2'] = win_merged['Bayan_percent_cover'] / 100 * (120 * 120)
-ott_merged['Bayan_total_m2'] = ott_merged['Bayan_percent_cover'] / 100 * (120 * 120)
+# Number of grids per city
+van_grid_count = 8224
+win_grid_count = 32411
+ott_grid_count = 41539
 
-van_bayan_cc = van_merged['Bayan_total_m2'].sum() / van_area * 100
-win_bayan_cc = win_merged['Bayan_total_m2'].sum() / win_area * 100
-ott_bayan_cc = ott_merged['Bayan_total_m2'].sum() / ott_area * 100
+# Define total area values (replace with your actual values)
+area_map = {
+    'Vancouver': van_grid_count * (120 * 120),
+    'Winnipeg': win_grid_count * (120 * 120),
+    'Ottawa': ott_grid_count * (120 * 120)
+}
+
+# Create Bayan_total_m2 based on grid cell area
+df['bayan_total_m2'] = df['bayan_percent_cover'] / 100 * (120 * 120)
+
+# Print the total m2 of canopy from each method per city
+m2_cols = [col for col in df.columns if col.endswith('_total_m2')]
+sum_by_city = df.groupby('city')[m2_cols].sum().reset_index()
+print("Total canopy area (m²) by city and method:")
+
+# Add a new column with the appropriate area
+sum_by_city['city_area'] = sum_by_city['city'].map(area_map)
+
+# Compute percent canopy cover (as new columns)
+for col in m2_cols:
+    percent_col = col.replace('_total_m2', '_percent_cover')
+    sum_by_city[percent_col] = sum_by_city[col] / sum_by_city['city_area'] * 100
+
+# Optional: reorder for clarity
+ordered_cols = ['city', 'city_area'] + m2_cols + [col.replace('_total_m2', '_percent_cover') for col in m2_cols]
+sum_by_city = sum_by_city[ordered_cols]
 
 # Print overall canopy cover
-print("--- Vancouver Canopy Cover ---")
-print(f"Vancouver LiDAR canopy cover: {van_lidar_cc:.2f}%")
-print(f"Vancouver Meta canopy cover: {van_meta_cc:.2f}%")
-print(f"Vancouver Bayan canopy cover: {van_bayan_cc:.2f}%")
-print(f"Vancouver ETH canopy cover: {van_eth_cc:.2f}%\n")
+for city in ['Vancouver', 'Winnipeg', 'Ottawa']:
+    row = sum_by_city[sum_by_city['city'] == city].iloc[0]
 
-print("--- Winnipeg Canopy Cover ---")
-print(f"Winnipeg LiDAR canopy cover: {win_lidar_cc:.2f}%")
-print(f"Winnipeg Meta canopy cover: {win_meta_cc:.2f}%")
-print(f"Winnipeg Bayan canopy cover: {win_bayan_cc:.2f}%")
-print(f"Winnipeg ETH canopy cover: {win_eth_cc:.2f}%\n")
-
-print("--- Ottawa Canopy Cover ---")
-print(f"Ottawa LiDAR canopy cover: {ott_lidar_cc:.2f}%")
-print(f"Ottawa Meta canopy cover: {ott_meta_cc:.2f}%")
-print(f"Ottawa Bayan canopy cover: {ott_bayan_cc:.2f}%")
-print(f"Ottawa ETH canopy cover: {ott_eth_cc:.2f}%")
+    print(f"--- {city} Canopy Cover ---")
+    print(f"{city} LiDAR canopy cover: {row['lidar_percent_cover']:.2f}% ({row['lidar_total_m2'] / 1_000_000:.2f} km²)")
+    print(f"{city} Meta canopy cover: {row['meta_percent_cover']:.2f}% ({row['meta_total_m2'] / 1_000_000:.2f} km²)")
+    print(f"{city} Bayan canopy cover: {row['bayan_percent_cover']:.2f}% ({row['bayan_total_m2'] / 1_000_000:.2f} km²)")
+    print(f"{city} ETH canopy cover: {row['eth_percent_cover']:.2f}% ({row['eth_total_m2'] / 1_000_000:.2f} km²)\n")
 
 #endregion
 
-## ---------------------------------------------- CALCULATE RMSE AND JSD -----------------------------------------------
+## ------------------------------------------------ FIGURE 1 HISTOGRAM -------------------------------------------------
 #region
 
-def safe_jsd(p, q):
-    """Normalize and compute JSD; returns np.nan if sum is 0."""
-    p = np.array(p)
-    q = np.array(q)
-    p = np.nan_to_num(p, nan=0.0)
-    q = np.nan_to_num(q, nan=0.0)
-    p = p / p.sum() if p.sum() > 0 else p
-    q = q / q.sum() if q.sum() > 0 else q
-    return jensenshannon(p, q)
+# Define sources
+sources = ['lidar', 'meta', 'bayan']  # skip 'eth' if it's all zeros
 
-# Set NaN to 0
-van_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']] = \
-    van_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']].fillna(0)
+# Get list of cities from your dataframe
+cities = df['city'].dropna().unique()
 
-win_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']] = \
-    win_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']].fillna(0)
+line_styles = ['-', '--', '-.', ':']
+colors = sns.color_palette("tab10")
 
-ott_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']] = \
-    ott_merged[['LiDAR_percent_cover', 'Meta_percent_cover', 'ETH_percent_cover', 'Bayan_percent_cover']].fillna(0)
+for i, city in enumerate(cities):
+    city_df = df[df['city'] == city]
 
-# Vancouver
-van_rmse_meta = np.sqrt(mean_squared_error(van_merged['LiDAR_percent_cover'], van_merged['Meta_percent_cover']))
-van_rmse_eth = np.sqrt(mean_squared_error(van_merged['LiDAR_percent_cover'], van_merged['ETH_percent_cover']))
-van_rmse_bayan = np.sqrt(mean_squared_error(van_merged['LiDAR_percent_cover'], van_merged['Bayan_percent_cover']))
+    plt.figure(figsize=(10, 6))
+    for j, src in enumerate(sources):
+        col = f'{src}_percent_cover'
+        if col in city_df.columns and city_df[col].notna().any():
+            sns.kdeplot(
+                city_df[col].dropna(),
+                label=src.capitalize(),
+                linewidth=2,
+                linestyle=line_styles[j % len(line_styles)],
+                color=colors[j % len(colors)],
+                common_norm=False
+            )
 
-van_jsd_meta = safe_jsd(van_merged['LiDAR_percent_cover'], van_merged['Meta_percent_cover'])
-van_jsd_eth = safe_jsd(van_merged['LiDAR_percent_cover'], van_merged['ETH_percent_cover'])
-van_jsd_bayan = safe_jsd(van_merged['LiDAR_percent_cover'], van_merged['Bayan_percent_cover'])
+    # Add vertical line and text for LiDAR mean
+    lidar_mean = sum_by_city.loc[sum_by_city['city'] == city, 'lidar_percent_cover'].values[0]
+    plt.axvline(lidar_mean, color='black', linestyle='--', linewidth=1.5, label=f'{lidar_mean:.2f}% LiDAR Mean')
+    plt.text(lidar_mean + 1, plt.ylim()[1]*0.9, f'{lidar_mean:.2f}%', color='black', fontsize=10, va='top')
 
-# Winnipeg
-win_rmse_meta = np.sqrt(mean_squared_error(win_merged['LiDAR_percent_cover'], win_merged['Meta_percent_cover']))
-win_rmse_eth = np.sqrt(mean_squared_error(win_merged['LiDAR_percent_cover'], win_merged['ETH_percent_cover']))
-win_rmse_bayan = np.sqrt(mean_squared_error(win_merged['LiDAR_percent_cover'], win_merged['Bayan_percent_cover']))
-
-win_jsd_meta = safe_jsd(win_merged['LiDAR_percent_cover'], win_merged['Meta_percent_cover'])
-win_jsd_eth = safe_jsd(win_merged['LiDAR_percent_cover'], win_merged['ETH_percent_cover'])
-win_jsd_bayan = safe_jsd(win_merged['LiDAR_percent_cover'], win_merged['Bayan_percent_cover'])
-
-# Ottawa
-ott_rmse_meta = np.sqrt(mean_squared_error(ott_merged['LiDAR_percent_cover'], ott_merged['Meta_percent_cover']))
-ott_rmse_eth = np.sqrt(mean_squared_error(ott_merged['LiDAR_percent_cover'], ott_merged['ETH_percent_cover']))
-ott_rmse_bayan = np.sqrt(mean_squared_error(ott_merged['LiDAR_percent_cover'], ott_merged['Bayan_percent_cover']))
-
-ott_jsd_meta = safe_jsd(ott_merged['LiDAR_percent_cover'], ott_merged['Meta_percent_cover'])
-ott_jsd_eth = safe_jsd(ott_merged['LiDAR_percent_cover'], ott_merged['ETH_percent_cover'])
-ott_jsd_bayan = safe_jsd(ott_merged['LiDAR_percent_cover'], ott_merged['Bayan_percent_cover'])
-
-# Print the summary
-print("\n--- RMSE and JSD Statistics ---")
-print(f"Vancouver RMSE - Meta: {van_rmse_meta:.2f}, ETH: {van_rmse_eth:.2f}, Bayan: {van_rmse_bayan:.2f}")
-print(f"Vancouver JSD  - Meta: {van_jsd_meta:.4f}, ETH: {van_jsd_eth:.4f}, Bayan: {van_jsd_bayan:.4f}\n")
-
-print(f"Winnipeg RMSE  - Meta: {win_rmse_meta:.2f}, ETH: {win_rmse_eth:.2f}, Bayan: {win_rmse_bayan:.2f}")
-print(f"Winnipeg JSD   - Meta: {win_jsd_meta:.4f}, ETH: {win_jsd_eth:.4f}, Bayan: {win_jsd_bayan:.4f}\n")
-
-print(f"Ottawa RMSE    - Meta: {ott_rmse_meta:.2f}, ETH: {ott_rmse_eth:.2f}, Bayan: {ott_rmse_bayan:.2f}")
-print(f"Ottawa JSD     - Meta: {ott_jsd_meta:.4f}, ETH: {ott_jsd_eth:.4f}, Bayan: {ott_jsd_bayan:.4f}")
+    # Formatting
+    plt.title(f'{city} Grid-Level Canopy Cover by Method (KDE)')
+    plt.xlabel('Percent Canopy Cover')
+    plt.ylabel('Density')
+    plt.xlim(0, 100)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 
 #endregion
 
-## --------------------------------- PREDICTORS OF DEVIATION: CORRELATION COEFFICIENT ----------------------------------
-#region
-
-print("\n--- Correlation Coefficients ---")
-
-# Calculate deviation from the true canopy cover (LiDAR)
-# Vancouver
-van_merged['ETH_deviation'] = van_merged['ETH_percent_cover'] - van_merged['LiDAR_percent_cover']
-van_merged['ETH_abs_deviation'] = van_merged['ETH_deviation'].abs()
-
-van_merged['Meta_deviation'] = van_merged['Meta_percent_cover'] - van_merged['LiDAR_percent_cover']
-van_merged['Meta_abs_deviation'] = van_merged['Meta_deviation'].abs()
-
-van_merged['Bayan_deviation'] = van_merged['Bayan_percent_cover'] - van_merged['LiDAR_percent_cover']
-van_merged['Bayan_abs_deviation'] = van_merged['Bayan_deviation'].abs()
-
-# Winnipeg
-win_merged['ETH_deviation'] = win_merged['ETH_percent_cover'] - win_merged['LiDAR_percent_cover']
-win_merged['ETH_abs_deviation'] = win_merged['ETH_deviation'].abs()
-
-win_merged['Meta_deviation'] = win_merged['Meta_percent_cover'] - win_merged['LiDAR_percent_cover']
-win_merged['Meta_abs_deviation'] = win_merged['Meta_deviation'].abs()
-
-win_merged['Bayan_deviation'] = win_merged['Bayan_percent_cover'] - win_merged['LiDAR_percent_cover']
-win_merged['Bayan_abs_deviation'] = win_merged['Bayan_deviation'].abs()
-
-# Ottawa
-ott_merged['ETH_deviation'] = ott_merged['ETH_percent_cover'] - ott_merged['LiDAR_percent_cover']
-ott_merged['ETH_abs_deviation'] = ott_merged['ETH_deviation'].abs()
-
-ott_merged['Meta_deviation'] = ott_merged['Meta_percent_cover'] - ott_merged['LiDAR_percent_cover']
-ott_merged['Meta_abs_deviation'] = ott_merged['Meta_deviation'].abs()
-
-ott_merged['Bayan_deviation'] = ott_merged['Bayan_percent_cover'] - ott_merged['LiDAR_percent_cover']
-ott_merged['Bayan_abs_deviation'] = ott_merged['Bayan_deviation'].abs()
-
-# Correlation coefficient functions
-def format_p(p):
-    return "< .001" if p < 0.001 else round(p, 3)
-
-
-def correlation_summary(df, city_name):
-    results = []
-    for col in ['ETH_deviation', 'ETH_abs_deviation',
-                'Meta_deviation', 'Meta_abs_deviation',
-                'Bayan_deviation', 'Bayan_abs_deviation']:
-        pearson_corr, pearson_p = pearsonr(df[col], df['LiDAR_percent_cover'])
-        spearman_corr, spearman_p = spearmanr(df[col], df['LiDAR_percent_cover'])
-
-        results.append({
-            'City': city_name,
-            'Variable': col,
-            'Pearson_r': round(pearson_corr, 3),
-            'Pearson_p': format_p(pearson_p),
-            'Spearman_rho': round(spearman_corr, 3),
-            'Spearman_p': format_p(spearman_p)
-        })
-    return results
-
-# Run correlations for each city
-van_corr = correlation_summary(van_merged, 'Vancouver')
-win_corr = correlation_summary(win_merged, 'Winnipeg')
-ott_corr = correlation_summary(ott_merged, 'Ottawa')
-
-corr_df = pd.DataFrame(van_corr + win_corr + ott_corr)
-
-# Display results
-print(corr_df)
-
-#endregion
-
-## ---------------------------------------------- PREDICTORS OF DEVIATION ----------------------------------------------
-#region
-
-
-
-#endregion
+exit()
