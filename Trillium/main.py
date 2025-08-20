@@ -11,26 +11,25 @@ from multiprocessing import Pool
 # Constants
 OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
-POTAPOV_RASTER = "/scratch/arbmarta/Potapov.tif"
 
 # Input boundaries
 bayan_configs = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": "EPSG:32610",
-        "ETH": "/scratch/arbmarta/ETH/Vancouver ETH.tif",
+        "ETH": "/scratch/arbmarta/ETH/Vancouver_ETH_32610.tif",
         "Meta": "/scratch/arbmarta/Meta/Vancouver Meta.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
         "epsg": "EPSG:32614",
-        "ETH": "/scratch/arbmarta/ETH/Winnipeg ETH.tif",
+        "ETH": "/scratch/arbmarta/ETH/Winnipeg_ETH_32614.tif",
         "Meta": "/scratch/arbmarta/Meta/Winnipeg Meta.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
         "epsg": "EPSG:32618",
-        "ETH": "/scratch/arbmarta/ETH/Ottawa ETH.tif",
+        "ETH": "/scratch/arbmarta/ETH/Ottawa_ETH_32618.tif",
         "Meta": "/scratch/arbmarta/Meta/Ottawa Meta.tif"
     }
 }
@@ -89,8 +88,8 @@ def main():
         )
         bayan_meta = bayan_gdf.drop(columns="geometry")
 
-        for source in ["ETH", "Meta", "Potapov"]:
-            raster_path = POTAPOV_RASTER if source == "Potapov" else config[source]
+        for source in ["ETH", "Meta"]:
+            raster_path = config[source]
             for i, row in bayan_gdf.iterrows():
                 tasks.append((
                     city,
