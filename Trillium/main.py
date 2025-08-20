@@ -105,7 +105,7 @@ def main():
         results = pool.map(process_grid, tasks)
 
     if results:
-        df = gpd.pd.concat(results, ignore_index=True)
+        df = pd.concat(results, ignore_index=True)
         df.to_csv(os.path.join(OUT_DIR, "All_Cities_Percent_Cover.csv"), index=False)
         print("Saved: All_Cities_Percent_Cover.csv")
 
