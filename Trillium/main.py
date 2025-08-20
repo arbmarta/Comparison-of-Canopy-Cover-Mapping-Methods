@@ -10,6 +10,7 @@ from multiprocessing import Pool
 # Constants
 OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
+POTAPOV_RASTER = "/scratch/arbmarta/Potapov.tif"
 
 # Input boundaries
 bayan_configs = {
@@ -87,8 +88,8 @@ def main():
         )
         bayan_meta = bayan_gdf.drop(columns="geometry")
 
-        for source in ["ETH", "Meta"]:
-            raster_path = config[source]
+        for source in ["ETH", "Meta", "Potapov"]:
+            raster_path = POTAPOV_RASTER if source == "Potapov" else config[source]
             for i, row in bayan_gdf.iterrows():
                 tasks.append((
                     city,
