@@ -10,6 +10,7 @@ from multiprocessing import Pool
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import rasterio.io
 
+# Function to reproject raster in memory
 def reproject_raster_in_memory(src, target_epsg):
     transform, width, height = calculate_default_transform(
         src.crs, f"EPSG:{target_epsg}", src.width, src.height, *src.bounds
@@ -36,10 +37,6 @@ def reproject_raster_in_memory(src, target_epsg):
             )
         return memfile.open()
 
-with rasterio.open(raster_path) as src:
-    if src.crs != epsg:
-        src = reproject_raster_in_memory(src, epsg)
-        
 # Constants
 OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -50,19 +47,22 @@ bayan_configs = {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": "EPSG:32610",
         "ETH": "/scratch/arbmarta/ETH/Vancouver_ETH_32610.tif",
-        "Meta": "/scratch/arbmarta/Meta/Vancouver Meta.tif"
+        "Meta": "/scratch/arbmarta/Meta/Vancouver Meta.tif",
+        "Potapov": "/scratch/arbmarta/Potapov/Vancouver Potapov.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
         "epsg": "EPSG:32614",
         "ETH": "/scratch/arbmarta/ETH/Winnipeg_ETH_32614.tif",
-        "Meta": "/scratch/arbmarta/Meta/Winnipeg Meta.tif"
+        "Meta": "/scratch/arbmarta/Meta/Winnipeg Meta.tif",
+        "Potapov": "/scratch/arbmarta/Potapov/Winnipeg Potapov.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
         "epsg": "EPSG:32618",
         "ETH": "/scratch/arbmarta/ETH/Ottawa_ETH_32618.tif",
-        "Meta": "/scratch/arbmarta/Meta/Ottawa Meta.tif"
+        "Meta": "/scratch/arbmarta/Meta/Ottawa Meta.tif",
+        "Potapov": "/scratch/arbmarta/Potapov/Ottawa Potapov.tif"
     }
 }
 
@@ -87,6 +87,9 @@ def process_grid(args):
 
     try:
         with rasterio.open(raster_path) as src:
+            if src.crs != epsg:
+                src = reproject_raster_in_memory(src, epsg)
+
             out_image, out_transform = mask(src, [grid], crop=True)
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
             if not polygons.empty:
@@ -120,7 +123,7 @@ def main():
         )
         bayan_meta = bayan_gdf.drop(columns="geometry")
 
-        for source in ["ETH", "Meta"]:
+        for source in ["ETH", "Meta", "Potapov"]:
             raster_path = config[source]
             for i, row in bayan_gdf.iterrows():
                 tasks.append((
