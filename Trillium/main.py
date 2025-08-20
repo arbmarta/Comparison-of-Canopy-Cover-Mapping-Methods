@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import geopandas as gpd
 import rasterio
 from rasterio.mask import mask
