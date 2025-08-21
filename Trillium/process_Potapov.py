@@ -19,14 +19,16 @@ city_info = {
     }
 }
 
-input_raster = "original_raster.tif"
-output_dir = "clipped_rasters"
+input_dir = "/scratch/arbmarta/Potapov"
+output_dir = "/scratch/arbmarta/Potapov/clipped_rasters"
 os.makedirs(output_dir, exist_ok=True)
 
 for city, info in city_info.items():
     bounds = info["bounds"]
     epsg = info["utm_epsg"]
     geom = [mapping(box(*bounds))]
+
+    input_raster = os.path.join(input_dir, f"{city}_Potapov_raw.tif")
 
     with rasterio.open(input_raster) as src:
         # Clip to bounding box
