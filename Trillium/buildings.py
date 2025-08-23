@@ -5,6 +5,16 @@ from multiprocessing import Pool
 from tqdm import tqdm
 import os
 
+CITY_BUILDINGS = {}
+
+def init_worker(van, wpg, ott):
+    global CITY_BUILDINGS
+    CITY_BUILDINGS = {
+        "Vancouver": van,
+        "Winnipeg": wpg,
+        "Ottawa": ott,
+    }
+
 # ---------- Step 1: Add grid_id to each Bayan cell ----------
 def add_grid_id(grid_gdf):
     centroids = grid_gdf.geometry.centroid
@@ -16,7 +26,9 @@ def add_grid_id(grid_gdf):
 
 # ---------- Step 2: Process one grid cell ----------
 def process_grid(args):
-    grid_row, buildings_gdf, city = args
+    grid_row, city = args
+    buildings_gdf = CITY_BUILDINGS[city]
+    
     grid_id = grid_row['grid_id']
     grid_geom = grid_row['geometry']
 
@@ -55,11 +67,12 @@ def process_grid(args):
 
 # ---------- Step 3: Main processing ----------
 def main():
+
     # Read and reproject all grids
     van_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610"))
     wpg_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614"))
     ott_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618"))
-
+    
     # Read and reproject all buildings
     van_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Vancouver Buildings.fgb').to_crs("EPSG:32610")
     wpg_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Winnipeg Buildings.shp').to_crs("EPSG:32614")
