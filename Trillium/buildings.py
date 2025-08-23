@@ -81,14 +81,15 @@ def main():
     # Build processing tasks (one per grid cell)
     tasks = []
     for _, row in van_bayan.iterrows():
-        tasks.append((row, van_buildings, "Vancouver"))
+        tasks.append((row, "Vancouver"))
     for _, row in wpg_bayan.iterrows():
-        tasks.append((row, wpg_buildings, "Winnipeg"))
+        tasks.append((row, "Winnipeg"))
     for _, row in ott_bayan.iterrows():
-        tasks.append((row, ott_buildings, "Ottawa"))
+        tasks.append((row, "Ottawa"))
 
     # Run parallel processing with tqdm
-    with Pool(processes=192) as pool:
+    with Pool(processes=192, initializer=init_worker,
+              initargs=(van_buildings, wpg_buildings, ott_buildings)) as pool:
         results = list(tqdm(pool.imap_unordered(process_grid, tasks), total=len(tasks)))
 
     # Export results to CSV
