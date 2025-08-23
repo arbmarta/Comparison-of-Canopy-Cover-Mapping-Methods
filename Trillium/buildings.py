@@ -2,6 +2,7 @@ import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
 from multiprocessing import Pool
+from tqdm import tqdm
 import os
 
 # ---------- Step 1: Add grid_id to each Bayan cell ----------
@@ -73,9 +74,9 @@ def main():
     for _, row in ott_bayan.iterrows():
         tasks.append((row, ott_buildings, "Ottawa"))
 
-    # Run parallel processing
+    # Run parallel processing with tqdm
     with Pool(processes=192) as pool:
-        results = pool.map(process_grid, tasks)
+        results = list(tqdm(pool.imap_unordered(process_grid, tasks), total=len(tasks)))
 
     # Export results to CSV
     df = pd.DataFrame(results)
