@@ -1,86 +1,112 @@
+import os
+import numpy as np
 import geopandas as gpd
-import pandas as pd
 from shapely.geometry import box
 from multiprocessing import Pool
-import os
+import pandas as pd
+from tqdm import tqdm
 
-# ---------- Step 1: Add grid_id to each Bayan cell ----------
-def add_grid_id(grid_gdf):
-    centroids = grid_gdf.geometry.centroid
-    grid_gdf["grid_id"] = (
-        (centroids.x // 120).astype(int).astype(str) + "_" +
-        (centroids.y // 120).astype(int).astype(str)
-    )
-    return grid_gdf
+# Input boundaries
+van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
+wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
+ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
 
-# ---------- Step 2: Process one grid cell ----------
-def process_grid(args):
-    grid_row, buildings_gdf, city = args
-    grid_id = grid_row['grid_id']
-    grid_geom = grid_row['geometry']
+buildings = {
+    "Vancouver": {"buildings": gpd.read_file('/scratch/arbmarta/Buildings/Vancouver Buildings.fgb').to_crs("EPSG:32610"), "bayan": van_bayan, "epsg": "EPSG:32610"},
+    "Winnipeg": {"buildings": gpd.read_file('/scratch/arbmarta/Buildings/Winnipeg Buildings.shp').to_crs("EPSG:32614"), "bayan": wpg_bayan, "epsg": "EPSG:32614"},
+    "Ottawa": {"buildings": gpd.read_file('/scratch/arbmarta/Buildings/Ottawa Buildings.shp').to_crs("EPSG:32618"), "bayan": ott_bayan, "epsg": "EPSG:32618"},
+}
+buildings["Winnipeg"]["buildings"]["geometry"] = buildings["Winnipeg"]["buildings"].geometry.buffer(0)
+
+OUT_DIR = "/scratch/arbmarta/Outputs"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
+
+def compute_building_metrics(buildings_gdf, cell_geom, cell_area):
+    if buildings_gdf.empty:
+        return pd.Series({
+            'built_area_total_m2': 0,
+            'number_of_buildings': 0,
+            'mean_building_size': 0
+        })
+
+    buildings_gdf['geometry'] = buildings_gdf.geometry.intersection(cell_geom)
+    buildings_gdf = buildings_gdf[~buildings_gdf.is_empty & buildings_gdf.is_valid]
+    buildings_gdf['area_m2'] = buildings_gdf.geometry.area
+
+    return pd.Series({
+        'built_area_total_m2': buildings_gdf['area_m2'].sum(),
+        'number_of_buildings': len(buildings_gdf),
+        'mean_building_size': buildings_gdf['area_m2'].mean()
+    })
+
+def process_subgrid(args):
+    city, buildings_gdf, subgeom, epsg, size = args
+    c = subgeom.centroid
+    sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
+    cell_area = size * size
 
     try:
-        # Clip buildings to grid cell
-        clipped = buildings_gdf[buildings_gdf.intersects(grid_geom)].copy()
+        clipped = buildings_gdf[buildings_gdf.intersects(subgeom)].copy()
         if clipped.empty:
-            return {
-                'city': city,
-                'grid_id': grid_id,
+            metrics = pd.Series({
                 'built_area_total_m2': 0,
                 'number_of_buildings': 0,
                 'mean_building_size': 0
-            }
-
-        # Intersect and clean
-        clipped['geometry'] = clipped.geometry.intersection(grid_geom)
-        clipped = clipped[~clipped.is_empty & clipped.is_valid]
-        clipped['area_m2'] = clipped.geometry.area
+            })
+        else:
+            metrics = compute_building_metrics(clipped, subgeom, cell_area)
 
         return {
             'city': city,
-            'grid_id': grid_id,
-            'built_area_total_m2': clipped['area_m2'].sum(),
-            'number_of_buildings': len(clipped),
-            'mean_building_size': clipped['area_m2'].mean()
+            'grid_id': sub_id,
+            'Grid Cell Size': size,
+            **metrics
         }
     except Exception as e:
         return {
             'city': city,
-            'grid_id': grid_id,
+            'grid_id': sub_id,
+            'Grid Cell Size': size,
             'built_area_total_m2': None,
             'number_of_buildings': None,
             'mean_building_size': None
         }
 
-# ---------- Step 3: Main processing ----------
 def main():
-    # Read and reproject all grids
-    van_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610"))
-    wpg_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614"))
-    ott_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618"))
-
-    # Read and reproject all buildings
-    van_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Vancouver Buildings.fgb').to_crs("EPSG:32610")
-    wpg_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Winnipeg Buildings.shp').to_crs("EPSG:32614")
-    wpg_buildings['geometry'] = wpg_buildings['geometry'].buffer(0)
-    ott_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Ottawa Buildings.shp').to_crs("EPSG:32618")
-
-    # Build processing tasks (one per grid cell)
     tasks = []
-    for _, row in van_bayan.iterrows():
-        tasks.append((row, van_buildings, "Vancouver"))
-    for _, row in wpg_bayan.iterrows():
-        tasks.append((row, wpg_buildings, "Winnipeg"))
-    for _, row in ott_bayan.iterrows():
-        tasks.append((row, ott_buildings, "Ottawa"))
 
-    # Run parallel processing
-    with Pool(processes=192) as pool:
-        results = pool.map(process_grid, tasks)
+    for city, config in buildings.items():
+        epsg = config["epsg"]
+        buildings_gdf = config["buildings"]
+        bayan = config["bayan"].to_crs(epsg)
 
-    # Export results to CSV
+        for _, row in bayan.iterrows():
+            parent_geom = row.geometry
+            minx, miny, maxx, maxy = parent_geom.bounds
+            for size in grid_sizes:
+                nx = int((maxx - minx) // size)
+                ny = int((maxy - miny) // size)
+                for i in range(nx):
+                    for j in range(ny):
+                        subgeom = box(minx + i*size, miny + j*size,
+                                      minx + (i+1)*size, miny + (j+1)*size)
+                        if not parent_geom.intersects(subgeom):
+                            continue
+                        subgeom = parent_geom.intersection(subgeom)
+                        if subgeom.is_empty:
+                            continue
+                        tasks.append((city, buildings_gdf, subgeom, epsg, size))
+
+    with Pool(processes=os.cpu_count()) as pool:
+        results = list(tqdm(pool.imap_unordered(process_subgrid, tasks), total=len(tasks)))
+
     df = pd.DataFrame(results)
-    df.to_csv('/scratch/arbmarta/Outputs/CSVs/Building_Area_By_Grid.csv', index=False)
+    cols = ['city', 'grid_id', 'Grid Cell Size', 'built_area_total_m2', 'number_of_buildings', 'mean_building_size']
+    df = df[cols]
+    df.to_csv(os.path.join(OUT_DIR, "Building_Fragmentation_By_Subgrid.csv"), index=False)
+    print("Saved: Building_Fragmentation_By_Subgrid.csv")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
