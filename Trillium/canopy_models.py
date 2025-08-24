@@ -63,8 +63,14 @@ def process_subgrid(args):
 
     c = subgeom.centroid
     sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
-
-    result = {"grid_id": sub_id, "city": city, "Grid Cell Size": size}
+    
+    result = {
+        "grid_id": grid_id,       # parent grid ID
+        "subgrid_id": sub_id,     # subgrid ID
+        "city": city,
+        "Grid Cell Size": size
+    }
+    
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [subgeom], crop=True)
@@ -136,9 +142,9 @@ def main():
         results = list(tqdm(pool.imap_unordered(process_subgrid, tasks), total=len(tasks)))
 
     df = pd.DataFrame(results)
-    cols = ["city", "grid_id", "Grid Cell Size", "total_m2", "percent_cover", "polygon_count",
-            "mean_patch_size", "patch_density", "total_perimeter",
-            "area_cv", "perimeter_cv", "PAFRAC", "nLSI", "CAI_AM", "LSI", "ED"]
+    cols = ["city", "grid_id", "subgrid_id", "Grid Cell Size", "total_m2", "percent_cover", "polygon_count",
+        "mean_patch_size", "patch_density", "total_perimeter",
+        "area_cv", "perimeter_cv", "PAFRAC", "nLSI", "CAI_AM", "LSI", "ED"]
     df = df[cols]
     df.to_csv(os.path.join(OUT_DIR, "LiDAR_Fragmentation_By_Subgrid.csv"), index=False)
     print("Saved: LiDAR_Fragmentation_By_Subgrid.csv")
