@@ -49,7 +49,7 @@ bayan_configs = {
         "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif"",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW_10m.tif", # Trees indicated by Value 1
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
@@ -62,7 +62,7 @@ bayan_configs = {
         "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif"",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Winnipeg DW_10m.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
@@ -75,7 +75,7 @@ bayan_configs = {
         "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif"",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Ottawa DW_10m.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
@@ -83,6 +83,46 @@ bayan_configs = {
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2021 Terrascope.tif"
     }
 }
+
+def create_canopy_mask(raster_path, canopy_value, boundary_gdf=None):
+    with rasterio.open(raster_path) as src:
+        data = src.read(1)
+        profile = src.profile
+
+        canopy_mask = (data == canopy_value).astype(np.uint8)
+
+        if boundary_gdf is not None:
+            boundary_gdf = boundary_gdf.to_crs(src.crs)
+            out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
+            canopy_mask = (out_image[0] == canopy_value).astype(np.uint8)
+            profile.update({
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": src.window_transform(
+                    rasterio.windows.from_bounds(*boundary_gdf.total_bounds, transform=src.transform)
+                )
+            })
+
+        return canopy_mask[np.newaxis, :, :], profile
+
+canopy_values = {
+    "DW_10m": 1,
+    "ESRI": 2,
+    "Terrascope 2020": 10
+}
+
+for city, config in bayan_configs.items():
+    boundary = gpd.read_file(config["shp"])
+    
+    for lc_type, canopy_val in canopy_values.items():
+        raster_path = config[lc_type]
+        mask_array, meta = create_canopy_mask(raster_path, canopy_val, boundary)
+
+        out_path = f"/scratch/arbmarta/Canopy_Masks/{city}_{lc_type.replace(' ', '_')}_canopy_mask.tif"
+        with rasterio.open(out_path, 'w', **meta) as dst:
+            dst.write(mask_array, 1)
+
+        print(f"Saved: {out_path}")
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     band = masked_arr[0]
