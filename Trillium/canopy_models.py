@@ -23,7 +23,7 @@ rasters = {
 OUT_DIR = "/scratch/arbmarta/Outputs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-grid_sizes = [60, 40, 30, 20, 10]  # Subgrid sizes
+grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     band = masked_arr[0]
@@ -60,7 +60,11 @@ def compute_fragmentation_metrics(polygon_df, grid_area=14400):
 
 def process_subgrid(args):
     city, raster_path, subgeom, grid_id, epsg, cell_area, size = args
-    result = {"grid_id": f"{grid_id}_{size}", "city": city, "Grid Cell Size": size}
+
+    c = subgeom.centroid
+    sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
+
+    result = {"grid_id": sub_id, "city": city, "Grid Cell Size": size}
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [subgeom], crop=True)
@@ -110,7 +114,9 @@ def main():
         for _, row in bayan.iterrows():
             parent_geom = row.geometry
             parent_id = row.grid_id
-
+            cell_area = 120 * 120
+            tasks.append((city, raster, parent_geom, parent_id, epsg, cell_area, 120))  # ← full grid
+    
             minx, miny, maxx, maxy = parent_geom.bounds
             for size in grid_sizes:
                 nx = int((maxx - minx) // size)
