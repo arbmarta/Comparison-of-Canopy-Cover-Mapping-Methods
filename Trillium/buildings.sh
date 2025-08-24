@@ -2,7 +2,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=192
-#SBATCH --time=03:30:00
+#SBATCH --time=00:15:00
 #SBATCH --job-name=buildings
 #SBATCH --output=/scratch/arbmarta/Outputs/Out/buildings.out
 #SBATCH --error=/scratch/arbmarta/Outputs/Err/buildings.err
