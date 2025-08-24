@@ -136,13 +136,14 @@ def create_canopy_mask_from_lc_raster(raster_path, canopy_value, boundary_gdf=No
 canopy_values = {
     "DW_10m": 1,
     "ESRI": 2,
-    "Terrascope 2020": 10
+    "Terrascope 2020": 10,
+    "Terrascope 2021": 10
 }
 
 for city, config in bayan_configs.items():
     boundary = gpd.read_file(config["shp"])
 
-    for lc_type in ["DW_10m", "ESRI", "Terrascope 2020"]:
+    for lc_type in ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
         canopy_val = canopy_values[lc_type]
         raster_path = config[lc_type]
         mask_array, meta = create_canopy_mask_from_lc_raster(raster_path, canopy_val, boundary)
@@ -164,10 +165,9 @@ def process_subgrid(args):
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
             if polygons.empty:
                 result.update({
-                    "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
-                    "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
-                    "area_cv": 0, "perimeter_cv": 0,
-                    "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0
+                    "total_m2": 0,
+                    "percent_cover": 0,
+                    "polygon_count": 0
                 })
             else:
                 polygons.set_crs(src.crs, inplace=True)
@@ -178,29 +178,16 @@ def process_subgrid(args):
                     how="intersection"
                 )
                 clipped["m2"] = clipped.geometry.area
-                clipped["perimeter"] = clipped.geometry.length
 
                 result["total_m2"] = total_m2 = clipped["m2"].sum()
-                result["polygon_count"] = poly_ct = len(clipped)
-                result["total_perimeter"] = clipped["perimeter"].sum()
+                result["polygon_count"] = len(clipped)
                 result["percent_cover"] = (total_m2 / cell_area) * 100
-                result["mean_patch_size"] = total_m2 / poly_ct if poly_ct else 0
-                result["patch_density"] = poly_ct / cell_area
-                result["area_cv"] = (
-                    clipped["m2"].std() / clipped["m2"].mean()
-                    if clipped["m2"].mean() > 0 else 0
-                )
-                result["perimeter_cv"] = (
-                    clipped["perimeter"].std() / clipped["perimeter"].mean()
-                    if clipped["perimeter"].mean() > 0 else 0
-                )
-                result.update(compute_fragmentation_metrics(clipped, grid_area=cell_area))
-    except:
+    except Exception as e:
+        print(f"Error in {city}, {grid_id}, {size}: {e}")
         result.update({
-            "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
-            "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
-            "area_cv": 0, "perimeter_cv": 0,
-            "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0
+            "total_m2": 0,
+            "percent_cover": 0,
+            "polygon_count": 0
         })
     return result
     
@@ -265,7 +252,7 @@ def main():
         )
         bayan_meta = bayan_gdf.drop(columns="geometry")
 
-        for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020"]:
+        for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
             raster_path = config[source]
             for size in grid_sizes:
                 for i, row in bayan_gdf.iterrows():
