@@ -48,7 +48,8 @@ def process_subgrid(args):
     cell_area = size * size
 
     try:
-        clipped = buildings_gdf[buildings_gdf.intersects(subgeom)].copy()
+        idx = buildings_gdf.sindex.query(subgeom, predicate="intersects")
+        clipped = buildings_gdf.iloc[idx].copy()
         if clipped.empty:
             metrics = pd.Series({
                 'built_area_total_m2': 0,
