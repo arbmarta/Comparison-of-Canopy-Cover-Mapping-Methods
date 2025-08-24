@@ -46,23 +46,23 @@ bayan_configs = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": "EPSG:32610",
-        "ETH": "/scratch/arbmarta/ETH/Vancouver_ETH_32610.tif",
-        "Meta": "/scratch/arbmarta/Meta/Vancouver Meta.tif",
-        "Potapov": "/scratch/arbmarta/Potapov/Vancouver Potapov.tif"
+        "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
+        "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
+        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
         "epsg": "EPSG:32614",
-        "ETH": "/scratch/arbmarta/ETH/Winnipeg_ETH_32614.tif",
-        "Meta": "/scratch/arbmarta/Meta/Winnipeg Meta.tif",
-        "Potapov": "/scratch/arbmarta/Potapov/Winnipeg Potapov.tif"
+        "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
+        "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
+        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
         "epsg": "EPSG:32618",
-        "ETH": "/scratch/arbmarta/ETH/Ottawa_ETH_32618.tif",
-        "Meta": "/scratch/arbmarta/Meta/Ottawa Meta.tif",
-        "Potapov": "/scratch/arbmarta/Potapov/Ottawa Potapov.tif"
+        "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
+        "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
+        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif"
     }
 }
 
