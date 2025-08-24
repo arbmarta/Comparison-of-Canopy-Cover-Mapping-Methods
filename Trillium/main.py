@@ -50,7 +50,11 @@ bayan_configs = {
         "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif"",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif"
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW_10m.tif",
+        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
@@ -59,7 +63,11 @@ bayan_configs = {
         "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif"",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif"
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Winnipeg DW_10m.tif",
+        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2021 Terrascope.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
@@ -68,7 +76,11 @@ bayan_configs = {
         "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif"",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif"
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Ottawa DW_10m.tif",
+        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2021 Terrascope.tif"
     }
 }
 
