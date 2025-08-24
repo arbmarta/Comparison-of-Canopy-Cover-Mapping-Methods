@@ -21,7 +21,7 @@ buildings["Winnipeg"]["buildings"]["geometry"] = buildings["Winnipeg"]["building
 OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
+grid_sizes = [120, 60]  # Subgrid sizes #don't calcualte for 40, 30, 20, 10
 
 def compute_building_metrics(buildings_gdf, cell_geom, cell_area):
     if buildings_gdf.empty:
