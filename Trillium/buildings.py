@@ -18,7 +18,7 @@ buildings = {
 }
 buildings["Winnipeg"]["buildings"]["geometry"] = buildings["Winnipeg"]["buildings"].geometry.buffer(0)
 
-OUT_DIR = "/scratch/arbmarta/Outputs"
+OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
@@ -105,8 +105,8 @@ def main():
     df = pd.DataFrame(results)
     cols = ['city', 'grid_id', 'Grid Cell Size', 'built_area_total_m2', 'number_of_buildings', 'mean_building_size']
     df = df[cols]
-    df.to_csv(os.path.join(OUT_DIR, "Building_Fragmentation_By_Subgrid.csv"), index=False)
-    print("Saved: Building_Fragmentation_By_Subgrid.csv")
+    df.to_csv(os.path.join(OUT_DIR, "Buildings.csv"), index=False)
+    print("Saved: Buildings.csv")
 
 if __name__ == "__main__":
     main()
