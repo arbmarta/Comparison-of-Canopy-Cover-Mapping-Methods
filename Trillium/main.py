@@ -10,6 +10,12 @@ from multiprocessing import Pool
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import rasterio.io
 
+# Constants
+OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+## ------------------------------------------- FUNCTIONS TO REPROJECT RASTERS IN MEMORY -------------------------------------------
+
 # Function to reproject raster in memory
 def reproject_raster_in_memory(src, target_epsg):
     transform, width, height = calculate_default_transform(
@@ -37,11 +43,8 @@ def reproject_raster_in_memory(src, target_epsg):
             )
         return memfile.open()
 
-# Constants
-OUT_DIR = "/scratch/arbmarta/Outputs"
-os.makedirs(OUT_DIR, exist_ok=True)
+## ------------------------------------------- INPUT BOUNDARIES -------------------------------------------
 
-# Input boundaries
 bayan_configs = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
@@ -84,7 +87,9 @@ bayan_configs = {
     }
 }
 
-def create_canopy_mask(raster_path, canopy_value, boundary_gdf=None):
+## ------------------------------------------- CONVERT LAND COVER RASTERS TO CANOPY COVER MAPS -------------------------------------------
+
+def create_canopy_mask_from_lc_raster(raster_path, canopy_value, boundary_gdf=None):
     with rasterio.open(raster_path) as src:
         data = src.read(1)
         profile = src.profile
@@ -113,16 +118,11 @@ canopy_values = {
 
 for city, config in bayan_configs.items():
     boundary = gpd.read_file(config["shp"])
-    
-    for lc_type, canopy_val in canopy_values.items():
+
+    for lc_type in ["DW_10m", "ESRI", "Terrascope 2020"]:
+        canopy_val = canopy_values[lc_type]
         raster_path = config[lc_type]
-        mask_array, meta = create_canopy_mask(raster_path, canopy_val, boundary)
-
-        out_path = f"/scratch/arbmarta/Canopy_Masks/{city}_{lc_type.replace(' ', '_')}_canopy_mask.tif"
-        with rasterio.open(out_path, 'w', **meta) as dst:
-            dst.write(mask_array, 1)
-
-        print(f"Saved: {out_path}")
+        mask_array, meta = create_canopy_mask_from_lc_raster(raster_path, canopy_val, boundary)
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     band = masked_arr[0]
