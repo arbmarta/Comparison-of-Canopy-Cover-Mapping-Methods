@@ -158,7 +158,12 @@ def process_subgrid(args):
     c = subgeom.centroid
     sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
 
-    result = {"grid_id": sub_id, "city": city, "Grid Cell Size": size}
+    result = {
+        "grid_id": grid_id,          # original grid ID
+        "subgrid_id": sub_id,        # new subgrid ID
+        "city": city,
+        "Grid Cell Size": size
+    }
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [subgeom], crop=True)
