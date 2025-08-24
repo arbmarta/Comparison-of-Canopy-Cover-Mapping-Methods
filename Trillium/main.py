@@ -87,7 +87,30 @@ bayan_configs = {
     }
 }
 
-## ------------------------------------------- CONVERT LAND COVER RASTERS TO CANOPY COVER MAPS -------------------------------------------
+## ------------------------------------------- CONVERT CANOPY HEIGHT MODELS TO BINARY CANOPY COVER MAPS -------------------------------------------
+
+def create_canopy_mask_from_chm(raster_path, boundary_gdf=None, threshold=2):
+    with rasterio.open(raster_path) as src:
+        data = src.read(1).astype(float)
+        profile = src.profile
+
+        canopy_mask = (data >= threshold).astype(np.uint8)
+
+        if boundary_gdf is not None:
+            boundary_gdf = boundary_gdf.to_crs(src.crs)
+            out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
+            canopy_mask = (out_image[0].astype(float) >= threshold).astype(np.uint8)
+            profile.update({
+                "height": out_image.shape[1],
+                "width": out_image.shape[2],
+                "transform": src.window_transform(
+                    rasterio.windows.from_bounds(*boundary_gdf.total_bounds, transform=src.transform)
+                )
+            })
+
+        return canopy_mask[np.newaxis, :, :], profile
+
+## ------------------------------------------- CONVERT LAND COVER RASTERS TO BINARY CANOPY COVER MAPS -------------------------------------------
 
 def create_canopy_mask_from_lc_raster(raster_path, canopy_value, boundary_gdf=None):
     with rasterio.open(raster_path) as src:
@@ -188,11 +211,11 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
     if nodata is not None:
         valid &= (band != nodata)
-    mask_vals = valid & (band >= 2)
+    mask_vals = valid & (band == 1)  # canopy is binary: 1 = tree, 0 = not tree
     results = [
-        (shape(geom), float(val))
+        (shape(geom), int(val))
         for geom, val in shapes(band, mask=mask_vals, transform=out_transform)
-        if val >= 2
+        if val == 1
     ]
     if not results:
         return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=None)
@@ -243,28 +266,28 @@ def main():
         bayan_meta = bayan_gdf.drop(columns="geometry")
 
         for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020"]:
-        raster_path = config[source]
-        for size in grid_sizes:
-            for i, row in bayan_gdf.iterrows():
-                subgeom = row.geometry
-                cell_area = size * size
-                tasks.append((
-                    city,
-                    raster_path,
-                    subgeom,
-                    row["grid_id"],
-                    epsg,
-                    cell_area,
-                    size
-                ))
-            
+            raster_path = config[source]
+            for size in grid_sizes:
+                for i, row in bayan_gdf.iterrows():
+                    subgeom = row.geometry
+                    cell_area = size * size
+                    tasks.append((
+                        city,
+                        raster_path,
+                        subgeom,
+                        row["grid_id"],
+                        epsg,
+                        cell_area,
+                        size
+                    ))
+                
     with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(process_grid, tasks)
+        results = pool.map(process_subgrid, tasks)
 
     if results:
-        df = pd.concat(results, ignore_index=True)
-        df.to_csv(os.path.join(OUT_DIR, "All_Cities_Percent_Cover.csv"), index=False)
-        print("Saved: All_Cities_Percent_Cover.csv")
+        df = pd.DataFrame(results)
+        df.to_csv(os.path.join(OUT_DIR, "All_Methods_Percent_Cover.csv"), index=False)
+        print("Saved: All_Methods_Percent_Cover.csv")
 
 if __name__ == "__main__":
     main()
