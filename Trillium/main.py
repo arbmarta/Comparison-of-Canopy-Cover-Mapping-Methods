@@ -51,9 +51,9 @@ bayan_configs = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif"",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW_10m.tif",
-        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif",
-        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW_10m.tif", # Trees indicated by Value 1
+        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
+        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif", # Trees indicated by Value 10
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
     },
     "Winnipeg": {
