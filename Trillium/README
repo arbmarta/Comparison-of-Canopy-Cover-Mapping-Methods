@@ -1,0 +1,68 @@
+Input: Raster (binary or fractional) + City boundary shapefile
+       Grid sizes: 120, 60, 40, 30, 20, 10 m
+
+┌───────────────────────────┐
+│ Step 1: Load city shapefile│
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Step 2: Generate grids    │
+│ - Compute grid_id (120 m)│
+│ - Loop over smaller sizes│
+│   to define subgrids      │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Step 3: Loop over rasters │
+│ - Binary rasters: ETH,    │
+│   Meta, Potapov, DW_10m, │
+│   ESRI, Terrascope 2020/21│
+│ - Fractional rasters:     │
+│   GLCF, GLOBMAPFTC        │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Step 4: Loop over subgrids│
+│ For each raster & subgrid │
+│                           │
+│ 4a. Mask raster with      │
+│     current subgrid       │
+│     → crops raster to    │
+│       grid extent         │
+│                           │
+│ 4b. Binary raster:        │
+│     - raster_to_polygons  │
+│     - clip to subgrid     │
+│     - calculate polygon   │
+│       areas (m²)          │
+│     - sum areas, compute  │
+│       percent cover       │
+│                           │
+│ 4c. Fractional raster:    │
+│     - raster_to_polygons  │
+│     - clip to subgrid     │
+│     - calculate polygon   │
+│       area (pixel_area)   │
+│     - multiply by value/100│
+│       to get canopy m²    │
+│     - sum areas, compute  │
+│       percent cover       │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Step 5: Collect results   │
+│ - Add grid_id, subgrid_id │
+│ - Add city, raster source │
+│ - Add total_m2, percent  │
+│   cover, polygon_count     │
+└─────────────┬─────────────┘
+              │
+              ▼
+┌───────────────────────────┐
+│ Step 6: Export CSV        │
+│ "All_Methods_Percent_Cover│
+└───────────────────────────┘
