@@ -260,13 +260,16 @@ def process_subgrid(args):
                 result["total_m2"] = total_m2 = clipped["m2"].sum()
                 result["polygon_count"] = len(clipped)
                 result["percent_cover"] = (total_m2 / cell_area) * 100
-    except Exception as e:
-        print(f"Error in {city}, {grid_id}, {size}: {e}")
-        result.update({
-            "total_m2": 0,
-            "percent_cover": 0,
-            "polygon_count": 0
-        })
+                
+    except ValueError as e:
+        # Only print city/raster once
+        print(f"Raster issue in {city}: {e}")
+        return {**result,
+                "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
+                "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
+                "area_cv": 0, "perimeter_cv": 0,
+                "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0}
+
     return result
     
 ## ------------------------------------------- CONVERT RASTERS TO POLYGONS -------------------------------------------
