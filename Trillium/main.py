@@ -292,6 +292,13 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None, crs=None):
 
 ## ------------------------------------------- MAIN CANOPY COVER ANALYZER -------------------------------------------
 
+def worker(task):
+    kind, args = task
+    if kind == "binary":
+        return process_subgrid(args)
+    else:
+        return process_fractional_raster(args)
+        
 def main():
     tasks = []
 
@@ -321,14 +328,6 @@ def main():
                     else:
                         # Binary raster
                         tasks.append(("binary", args))
-
-    # Prepare function wrapper for multiprocessing
-    def worker(task):
-        kind, args = task
-        if kind == "binary":
-            return process_subgrid(args)
-        else:
-            return process_fractional_raster(args)
 
     with Pool(processes=os.cpu_count()) as pool:
         results = pool.map(worker, tasks)
