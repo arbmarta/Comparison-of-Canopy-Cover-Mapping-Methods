@@ -107,7 +107,8 @@ def create_canopy_mask_from_chm(raster_path, boundary_gdf=None):
         canopy_mask = (data >= 2).astype(np.uint8)
 
         if boundary_gdf is not None:
-            boundary_gdf = boundary_gdf.to_crs(src.crs)
+            if boundary_gdf.crs != src.crs:
+                boundary_gdf = boundary_gdf.to_crs(src.crs)
             out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
             canopy_mask = (out_image[0].astype(float) >= 2).astype(np.uint8)
             profile.update({
@@ -130,7 +131,8 @@ def create_canopy_mask_from_lc_raster(raster_path, canopy_value, boundary_gdf=No
         canopy_mask = (data == canopy_value).astype(np.uint8)
 
         if boundary_gdf is not None:
-            boundary_gdf = boundary_gdf.to_crs(src.crs)
+            if boundary_gdf.crs != src.crs:
+                boundary_gdf = boundary_gdf.to_crs(src.crs)
             out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
             canopy_mask = (out_image[0] == canopy_value).astype(np.uint8)
             profile.update({
@@ -151,12 +153,73 @@ canopy_values = {
 }
 
 for city, dataset in datasets.items():
-    boundary = gpd.read_file(config["shp"])
+    boundary = gpd.read_file(dataset["shp"])
 
     for lc_type in ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
         canopy_val = canopy_values[lc_type]
-        raster_path = config[lc_type]
+        raster_path = dataset[lc_type]
         mask_array, meta = create_canopy_mask_from_lc_raster(raster_path, canopy_val, boundary)
+
+## ------------------------------------------- PROCESS FRACTIONAL CANOPY COVER RASTERS -------------------------------------------
+
+def process_fractional_raster(args):
+    city, raster_path, subgeom, grid_id, epsg, cell_area, size = args
+
+    c = subgeom.centroid
+    sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
+
+    result = {
+        "grid_id": grid_id,
+        "subgrid_id": sub_id,
+        "city": city,
+        "Grid Cell Size": size
+    }
+
+    try:
+        with rasterio.open(raster_path) as src:
+            out_image, out_transform = mask(src, [subgeom], crop=True)
+            band = out_image[0]
+
+            # Convert raster to polygons for calculation
+            polygons = [
+                (shape(geom), float(val))
+                for geom, val in shapes(band, mask=(band > 0), transform=out_transform)
+            ]
+
+            if not polygons:
+                result.update({
+                    "total_m2": 0,
+                    "percent_cover": 0,
+                    "polygon_count": 0
+                })
+            else:
+                gdf = gpd.GeoDataFrame(
+                    {"value": [v for _, v in polygons]},
+                    geometry=[g for g, _ in polygons],
+                    crs=src.crs
+                )
+                gdf = gdf.to_crs(epsg)
+                clipped = gpd.overlay(
+                    gdf,
+                    gpd.GeoDataFrame(geometry=[subgeom], crs=epsg),
+                    how="intersection"
+                )
+                clipped["pixel_area"] = clipped.geometry.area
+                clipped["canopy_m2"] = clipped["pixel_area"] * (clipped["value"] / 100)
+
+                result["total_m2"] = clipped["canopy_m2"].sum()
+                result["polygon_count"] = len(clipped)
+                result["percent_cover"] = (result["total_m2"] / cell_area) * 100
+
+    except Exception as e:
+        print(f"Error in {city}, {grid_id}, {size}: {e}")
+        result.update({
+            "total_m2": 0,
+            "percent_cover": 0,
+            "polygon_count": 0
+        })
+
+    return result
 
 ## ------------------------------------------- CREATE SUBGRIDS -------------------------------------------
 
@@ -177,7 +240,7 @@ def process_subgrid(args):
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [subgeom], crop=True)
-            polygons = raster_to_polygons(out_image, out_transform, src.nodata)
+            polygons = raster_to_polygons(out_image, out_transform, src.nodata, crs=src.crs)
             if polygons.empty:
                 result.update({
                     "total_m2": 0,
@@ -208,7 +271,7 @@ def process_subgrid(args):
     
 ## ------------------------------------------- CONVERT RASTERS TO POLYGONS -------------------------------------------
 
-def raster_to_polygons(masked_arr, out_transform, nodata=None):
+def raster_to_polygons(masked_arr, out_transform, nodata=None, crs=None):
     band = masked_arr[0]
     valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
     if nodata is not None:
@@ -220,71 +283,52 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
         if val == 1
     ]
     if not results:
-        return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=None)
+        return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=crs)
     geoms, vals = zip(*results)
-    return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
+    return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=crs)
 
 ## ------------------------------------------- MAIN CANOPY COVER ANALYZER -------------------------------------------
-
-def process_grid(args):
-    city, source, raster_path, grid, grid_id, grid_meta, epsg = args
-
-    try:
-        with rasterio.open(raster_path) as src:
-            if src.crs != epsg:
-                src = reproject_raster_in_memory(src, epsg)
-
-            out_image, out_transform = mask(src, [grid], crop=True)
-            polygons = raster_to_polygons(out_image, out_transform, src.nodata)
-            if not polygons.empty:
-                polygons.set_crs(src.crs, inplace=True)
-                polygons = polygons.to_crs(epsg)
-                clipped = gpd.overlay(polygons, gpd.GeoDataFrame(geometry=[grid], crs=epsg), how="intersection")
-                total_m2 = clipped.geometry.area.sum()
-            else:
-                total_m2 = 0
-    except Exception:
-        total_m2 = 0
-
-    percent_cover = (total_m2 / 14400) * 100
-    result = grid_meta.copy()
-    result["total_m2"] = total_m2
-    result["percent_cover"] = percent_cover
-    result["city"] = city
-    result["source"] = source
-    result["grid_id"] = grid_id
-    return result
 
 def main():
     tasks = []
 
     for city, dataset in datasets.items():
-        epsg = config["epsg"]
-        bayan_gdf = gpd.read_file(config["shp"]).to_crs(epsg)
+        epsg = dataset["epsg"]
+        bayan_gdf = gpd.read_file(dataset["shp"]).to_crs(epsg)
         bayan_gdf["grid_id"] = (
             (bayan_gdf.geometry.centroid.x // 120).astype(int).astype(str) + "_" +
             (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
         )
-        bayan_meta = bayan_gdf.drop(columns="geometry")
 
-        for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
-            raster_path = config[source]
+        grid_sizes = [120, 60, 40, 30, 20, 10]
+
+        for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021", "GLCF", "GLOBMAPFTC"]:
+            raster_path = dataset[source]
+
             for size in grid_sizes:
+                cell_area = size * size
+
                 for i, row in bayan_gdf.iterrows():
                     subgeom = row.geometry
-                    cell_area = size * size
-                    tasks.append((
-                        city,
-                        raster_path,
-                        subgeom,
-                        row["grid_id"],
-                        epsg,
-                        cell_area,
-                        size
-                    ))
-                
+                    args = (city, raster_path, subgeom, row["grid_id"], epsg, cell_area, size)
+
+                    if source in ["GLCF", "GLOBMAPFTC"]:
+                        # Fractional-cover raster
+                        tasks.append(("fractional", args))
+                    else:
+                        # Binary raster
+                        tasks.append(("binary", args))
+
+    # Prepare function wrapper for multiprocessing
+    def worker(task):
+        kind, args = task
+        if kind == "binary":
+            return process_subgrid(args)
+        else:
+            return process_fractional_raster(args)
+
     with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(process_subgrid, tasks)
+        results = pool.map(worker, tasks)
 
     if results:
         df = pd.DataFrame(results)
