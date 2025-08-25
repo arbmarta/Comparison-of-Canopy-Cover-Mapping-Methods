@@ -21,7 +21,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 datasets = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
-        "epsg": "EPSG:32610",
+        "epsg": 32610,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
@@ -34,7 +34,7 @@ datasets = {
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
-        "epsg": "EPSG:32614",
+        "epsg": 32614,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
@@ -47,7 +47,7 @@ datasets = {
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
-        "epsg": "EPSG:32618",
+        "epsg": 32618,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
@@ -65,39 +65,67 @@ raster_keys = ["ETH", "Meta", "Potapov", "GLCF", "GLOBMAPFTC",
 
 ## ------------------------------------------- FUNCTIONS TO CHECK PROJECTION OF RASTERS AND SHAPEFILES -------------------------------------------
 
+def get_epsg_int(crs):
+    if crs is None:
+        return None
+    return int(crs.to_string().split(":")[1])
+
 for city, info in datasets.items():
     target_epsg = info["epsg"]
-
-    # Check shapefile EPSG
-    shp_path = info["shp"]
-    gdf = gpd.read_file(shp_path)
-    if gdf.crs is None:
+    
+    # Shapefile EPSG
+    gdf = gpd.read_file(info["shp"])
+    shp_epsg = get_epsg_int(gdf.crs)
+    if shp_epsg is None:
         print(f"[Error] {city} shapefile has no CRS defined")
-    elif gdf.crs.to_string() != target_epsg:
-        print(f"[Mismatch] {city} shapefile EPSG: {gdf.crs} != {target_epsg}")
+    elif shp_epsg != target_epsg:
+        print(f"[Mismatch] {city} shapefile EPSG: {shp_epsg} != {target_epsg}")
     else:
         print(f"[OK] {city} shapefile EPSG matches {target_epsg}")
 
-    # Check raster EPSG
-    all_match = True  # flag to track if all rasters have correct EPSG
+    # Raster EPSG
+    all_match = True
     for key in raster_keys:
         if key in info:
             raster_path = info[key]
             try:
                 with rasterio.open(raster_path) as src:
-                    if src.crs is None:
+                    raster_epsg = get_epsg_int(src.crs)
+                    if raster_epsg is None:
                         print(f"[Mismatch] {city} raster '{key}' has no CRS defined")
                         all_match = False
-                    elif src.crs.to_string() != target_epsg:
-                        print(f"[Mismatch] {city} raster '{key}' EPSG: {src.crs} != {target_epsg}")
+                    elif raster_epsg != target_epsg:
+                        print(f"[Mismatch] {city} raster '{key}' EPSG: {raster_epsg} != {target_epsg}")
                         all_match = False
             except Exception as e:
                 print(f"[Error] Could not open {city} raster '{key}': {e}")
                 all_match = False
-    
+
     if all_match:
         print(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
-                
+
+## ------------------------------------------- CHECK RASTER COVERAGE OF BAYAN SHAPEFILES -------------------------------------------
+
+for city, info in datasets.items():
+    bayan_gdf = gpd.read_file(info["shp"]).to_crs(info["epsg"])
+    bayan_bounds = bayan_gdf.total_bounds  # [minx, miny, maxx, maxy]
+
+    for key in raster_keys:
+        if key in info:
+            raster_path = info[key]
+            try:
+                with rasterio.open(raster_path) as src:
+                    raster_bounds = src.bounds  # left, bottom, right, top
+
+                    # Check if raster fully covers shapefile
+                    if (raster_bounds.left > bayan_bounds[0] or
+                        raster_bounds.bottom > bayan_bounds[1] or
+                        raster_bounds.right < bayan_bounds[2] or
+                        raster_bounds.top < bayan_bounds[3]):
+                        print(f"[Coverage Error] {city} raster '{key}' does not fully cover the bayan shapefile")
+            except Exception as e:
+                print(f"[Error] Could not open {city} raster '{key}' for coverage check: {e}")
+
 ## ------------------------------------------- CONVERT CANOPY HEIGHT MODELS TO BINARY CANOPY COVER MAPS -------------------------------------------
 
 def create_canopy_mask_from_chm(raster_path, boundary_gdf=None):
