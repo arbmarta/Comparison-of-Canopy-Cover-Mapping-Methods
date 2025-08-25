@@ -1,3 +1,225 @@
+** raster_merge.py **
+
+Start
+  │
+  ▼
+Define input file paths and output file path
+  │
+  ▼
+Open all input rasters with rasterio
+  │
+  ▼
+Merge rasters using rasterio.merge.merge()
+  │
+  │──> Output: mosaic array + updated transform
+  │
+  ▼
+Copy profile from first raster
+  │
+  ▼
+Update profile:
+  - driver="GTiff"
+  - height & width = mosaic.shape
+  - transform = merged transform
+  - count=1
+  - compress="LZW"
+  - tiled=True
+  - bigtiff="IF_SAFER"
+  - nodata=0
+  │
+  ▼
+Write mosaic to new raster file
+  │
+  ▼
+Close all input raster files
+  │
+  ▼
+End
+
+
+** process_Potapov.py **
+
+Input:
+- Raw Potapov raster for each city (WGS84)
+- City bounding boxes
+- Target UTM EPSG per city
+
+┌───────────────────────────────┐
+│ Step 1: Define city info      │
+│ - bounds (minx, miny, maxx, maxy) │
+│ - UTM EPSG code               │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 2: Loop over cities      │
+│ For each city:                │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 3: Create bounding box   │
+│ - Convert to Shapely box      │
+│ - Convert to GeoJSON mapping  │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 4: Clip raster           │
+│ - Open raw raster             │
+│ - Apply rasterio.mask.mask    │
+│ - Crop to bounding box        │
+│ - Update metadata (height, width, transform) │
+│ - Save intermediate clipped raster (WGS84)  │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 5: Reproject to UTM      │
+│ - Open clipped raster         │
+│ - Calculate default transform │
+│ - Update metadata (crs, transform, width, height) │
+│ - Reproject each band using nearest neighbor │
+│ - Save reprojected raster (UTM) │
+└───────────────────────────────┘
+Output:
+- Clipped raster in WGS84
+- Reprojected raster in city-specific UTM
+
+** buildings.py **
+
+Input:
+- City boundary shapefiles (Bayan) per city
+- Building footprints per city
+- Grid size: 120 m
+
+┌───────────────────────────────┐
+│ Step 1: Load and reproject    │
+│ - Read city shapefiles        │
+│ - Read building footprints    │
+│ - Reproject all to EPSG       │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 2: Assign grid IDs       │
+│ - Compute centroids of Bayan  │
+│ - grid_id = "x_index_y_index_120" │
+│ - Adds grid_id column to shapefile │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 3: Prepare tasks         │
+│ - One task per grid cell      │
+│ - Task = (grid_row, buildings_gdf, city) │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 4: Process each grid cell│
+│ (process_grid function)       │
+│ - Clip buildings to grid cell │
+│ - Intersect geometries        │
+│ - Remove empty/invalid polygons │
+│ - Compute metrics:            │
+│   - built_area_total_m2       │
+│   - number_of_buildings       │
+│   - mean_building_size        │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 5: Multiprocessing       │
+│ - Use Pool to parallelize tasks│
+│ - 192 processes               │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 6: Collect results       │
+│ - Combine dicts → DataFrame   │
+│ - Export CSV: Buildings.csv   │
+└───────────────────────────────┘
+
+
+** canopymodels.py **
+
+Input:
+- LiDAR raster per city
+- City boundary shapefile (bayan)
+- Grid sizes: 120, 60, 40, 30, 20, 10 m
+
+┌───────────────────────────────┐
+│ Step 1: Load data             │
+│ - Raster (LiDAR)              │
+│ - City boundary shapefile      │
+│ - Reproject to target EPSG     │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 2: Assign parent grid IDs│
+│ - Full 120 m grids            │
+│ - grid_id = "x_index_y_index" │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 3: Generate subgrids      │
+│ For each parent grid polygon:  │
+│ - Subdivide into smaller grids │
+│   using grid_sizes list        │
+│ - Clip subgrid to parent       │
+│ - Skip empty intersections     │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 4: Prepare processing tasks│
+│ For each grid/subgrid:         │
+│ - city, raster path            │
+│ - geometry (subgrid)           │
+│ - parent grid_id               │
+│ - EPSG, cell_area, grid size   │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 5: Process subgrid raster │
+│ (process_subgrid function)     │
+│ - Mask raster to subgrid       │
+│ - Convert masked raster → polygons│
+│ - Clip polygons to subgrid     │
+│ - Compute metrics:             │
+│   - total_m2, polygon_count    │
+│   - total_perimeter             │
+│   - percent_cover               │
+│   - mean_patch_size, patch_density│
+│   - area_cv, perimeter_cv       │
+│   - fragmentation metrics:      │
+│     PAFRAC, nLSI, CAI_AM, LSI, ED│
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 6: Multiprocessing       │
+│ - Use Pool to parallelize      │
+│ - tqdm progress bar            │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│ Step 7: Collect results       │
+│ - Combine output dicts → DataFrame│
+│ - Reorder columns             │
+│ - Export CSV: LiDAR_Fragmentation_By_Subgrid.csv │
+└───────────────────────────────┘
+
+
+
+**main.py**
+
 Input: Raster (binary or fractional) + City boundary shapefile
        Grid sizes: 120, 60, 40, 30, 20, 10 m
 
