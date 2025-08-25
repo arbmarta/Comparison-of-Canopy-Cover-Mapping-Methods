@@ -10,6 +10,7 @@ from multiprocessing import Pool
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import rasterio.io
 from rasterio.windows import from_bounds
+from tqdm import tqdm
 
 # Constants
 OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
@@ -330,7 +331,7 @@ def main():
                         tasks.append(("binary", args))
 
     with Pool(processes=os.cpu_count()) as pool:
-        results = pool.map(worker, tasks)
+        results = list(tqdm(pool.imap_unordered(worker, tasks), total=len(tasks)))
 
     if results:
         df = pd.DataFrame(results)
