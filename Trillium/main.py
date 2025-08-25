@@ -9,43 +9,15 @@ from shapely.geometry import shape
 from multiprocessing import Pool
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import rasterio.io
+from rasterio.windows import from_bounds
 
 # Constants
 OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
-## ------------------------------------------- FUNCTIONS TO REPROJECT RASTERS IN MEMORY -------------------------------------------
+## ------------------------------------------- INPUT DATASETS -------------------------------------------
 
-# Function to reproject raster in memory
-def reproject_raster_in_memory(src, target_epsg):
-    transform, width, height = calculate_default_transform(
-        src.crs, f"EPSG:{target_epsg}", src.width, src.height, *src.bounds
-    )
-    profile = src.profile.copy()
-    profile.update({
-        'crs': f"EPSG:{target_epsg}",
-        'transform': transform,
-        'width': width,
-        'height': height
-    })
-
-    memfile = rasterio.io.MemoryFile()
-    with memfile.open(**profile) as dst:
-        for i in range(1, src.count + 1):
-            reproject(
-                source=rasterio.band(src, i),
-                destination=rasterio.band(dst, i),
-                src_transform=src.transform,
-                src_crs=src.crs,
-                dst_transform=transform,
-                dst_crs=f"EPSG:{target_epsg}",
-                resampling=Resampling.nearest
-            )
-        return memfile.open()
-
-## ------------------------------------------- INPUT BOUNDARIES -------------------------------------------
-
-bayan_configs = {
+datasets = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": "EPSG:32610",
@@ -54,7 +26,7 @@ bayan_configs = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW_10m.tif", # Trees indicated by Value 1
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW.tif", # Trees indicated by Value 1
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif", # Trees indicated by Value 10
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
@@ -67,7 +39,7 @@ bayan_configs = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Winnipeg DW_10m.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Winnipeg DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2020 Terrascope.tif",
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2021 Terrascope.tif"
@@ -80,26 +52,64 @@ bayan_configs = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Ottawa DW_10m.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Ottawa DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2020 Terrascope.tif",
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2021 Terrascope.tif"
     }
 }
 
+raster_keys = ["ETH", "Meta", "Potapov", "GLCF", "GLOBMAPFTC",
+               "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
+
+## ------------------------------------------- FUNCTIONS TO CHECK PROJECTION OF RASTERS AND SHAPEFILES -------------------------------------------
+
+for city, info in datasets.items():
+    target_epsg = info["epsg"]
+
+    # Check shapefile EPSG
+    shp_path = info["shp"]
+    gdf = gpd.read_file(shp_path)
+    if gdf.crs is None:
+        print(f"[Error] {city} shapefile has no CRS defined")
+    elif gdf.crs.to_string() != target_epsg:
+        print(f"[Mismatch] {city} shapefile EPSG: {gdf.crs} != {target_epsg}")
+    else:
+        print(f"[OK] {city} shapefile EPSG matches {target_epsg}")
+
+    # Check raster EPSG
+    all_match = True  # flag to track if all rasters have correct EPSG
+    for key in raster_keys:
+        if key in info:
+            raster_path = info[key]
+            try:
+                with rasterio.open(raster_path) as src:
+                    if src.crs is None:
+                        print(f"[Mismatch] {city} raster '{key}' has no CRS defined")
+                        all_match = False
+                    elif src.crs.to_string() != target_epsg:
+                        print(f"[Mismatch] {city} raster '{key}' EPSG: {src.crs} != {target_epsg}")
+                        all_match = False
+            except Exception as e:
+                print(f"[Error] Could not open {city} raster '{key}': {e}")
+                all_match = False
+    
+    if all_match:
+        print(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
+                
 ## ------------------------------------------- CONVERT CANOPY HEIGHT MODELS TO BINARY CANOPY COVER MAPS -------------------------------------------
 
-def create_canopy_mask_from_chm(raster_path, boundary_gdf=None, threshold=2):
+def create_canopy_mask_from_chm(raster_path, boundary_gdf=None):
     with rasterio.open(raster_path) as src:
         data = src.read(1).astype(float)
         profile = src.profile
 
-        canopy_mask = (data >= threshold).astype(np.uint8)
+        canopy_mask = (data >= 2).astype(np.uint8)
 
         if boundary_gdf is not None:
             boundary_gdf = boundary_gdf.to_crs(src.crs)
             out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
-            canopy_mask = (out_image[0].astype(float) >= threshold).astype(np.uint8)
+            canopy_mask = (out_image[0].astype(float) >= 2).astype(np.uint8)
             profile.update({
                 "height": out_image.shape[1],
                 "width": out_image.shape[2],
@@ -140,7 +150,7 @@ canopy_values = {
     "Terrascope 2021": 10
 }
 
-for city, config in bayan_configs.items():
+for city, dataset in datasets.items():
     boundary = gpd.read_file(config["shp"])
 
     for lc_type in ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
@@ -248,7 +258,7 @@ def process_grid(args):
 def main():
     tasks = []
 
-    for city, config in bayan_configs.items():
+    for city, dataset in datasets.items():
         epsg = config["epsg"]
         bayan_gdf = gpd.read_file(config["shp"]).to_crs(epsg)
         bayan_gdf["grid_id"] = (
