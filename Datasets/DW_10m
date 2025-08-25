@@ -1,0 +1,82 @@
+// ======================================================
+// Dynamic World (V1) — Export "label" band for Year 2022
+// How to use:
+// 1) Draw your ROI in the Code Editor and name it `geometry`.
+// 2) Click Run.
+// 3) Start the Export task in the Tasks tab.
+// ======================================================
+
+// ---------- SETTINGS ----------
+var YEAR   = 2022;           // target year
+var SCALE  = 10;             // DW native resolution (meters)
+var FOLDER = 'EarthEngine';  // Google Drive folder (optional)
+
+// Normalize ROI (handle both Feature and Geometry) and
+// use a small non-zero error margin to avoid topology issues.
+// var roi = (geometry.geometry ? geometry.geometry() : geometry).buffer(0, 1);
+
+// ---------- SOURCE COLLECTION ----------
+var dw = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1')
+  .filterBounds(roi)
+  .filterDate(ee.Date.fromYMD(YEAR, 1, 1), ee.Date.fromYMD(YEAR + 1, 1, 1))
+  .select('label'); // <-- band 9 by name (safer than index)
+
+// Guard rails
+print('DW ' + YEAR + ' image count in ROI:', dw.size());
+Map.centerObject(roi, 10);
+
+// ---------- ANNUAL LABEL (choose ONE strategy) ----------
+// A) Annual MODE (most frequent label across 2022)  ← default
+var labelAnnual = dw.reduce(ee.Reducer.mode()).rename('label').toByte();
+
+// --- Optional alternatives (commented):
+// B) Latest observation in 2022 (if you prefer the last valid label):
+// var labelAnnual = dw.sort('system:time_start', false).mosaic().rename('label').toByte();
+
+// C) Most-confident observation in 2022 (requires adding max prob band):
+// var withConf = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1')
+//   .filterBounds(roi)
+//   .filterDate(ee.Date.fromYMD(YEAR,1,1), ee.Date.fromYMD(YEAR+1,1,1))
+//   .map(function(img){
+//     var conf = img.select([
+//       'water','trees','grass','flooded_vegetation','crops',
+//       'shrub_and_scrub','built','bare','snow_and_ice'
+//     ]).reduce(ee.Reducer.max()).rename('confidence');
+//     return img.addBands(conf);
+//   });
+// var labelAnnual = withConf.qualityMosaic('confidence').select('label').toByte();
+
+// ---------- QUICK MAP PREVIEW ----------
+var palette = [
+  '#419BDF', // 0 water
+  '#397D49', // 1 trees
+  '#88B053', // 2 grass
+  '#7A87C6', // 3 flooded_vegetation
+  '#E49635', // 4 crops
+  '#DFC35A', // 5 shrub_and_scrub
+  '#C4281B', // 6 built
+  '#A59B8F', // 7 bare
+  '#B39FE1'  // 8 snow_and_ice
+];
+Map.addLayer(labelAnnual.clip(roi), {min: 0, max: 8, palette: palette}, 'DW label ' + YEAR);
+
+// ---------- EXPORT TO DRIVE (GeoTIFF) ----------
+Export.image.toDrive({
+  image: labelAnnual.clip(roi),
+  description: 'DW_label_' + YEAR + '_mode',     // edit if using an alternative strategy
+  folder: FOLDER,                                 // set to null to use root
+  fileNamePrefix: 'dw_label_' + YEAR + '_mode',   // edit to taste
+  region: roi,
+  scale: SCALE,
+  maxPixels: 1e13
+});
+
+// ---------- (Optional) EXPORT TO ASSET ----------
+// ee.batch.Export.image.toAsset({
+//   image: labelAnnual.clip(roi),
+//   description: 'DW_label_' + YEAR + '_asset',
+//   assetId: 'users/your_username/dw_label_' + YEAR,
+//   region: roi,
+//   scale: SCALE,
+//   maxPixels: 1e13
+// }).start();
