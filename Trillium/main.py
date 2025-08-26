@@ -27,7 +27,7 @@ datasets = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Vancouver DW.tif", # Trees indicated by Value 1
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Vancouver DW.tif", # Trees indicated by Value 1
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif", # Trees indicated by Value 10
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
@@ -40,7 +40,7 @@ datasets = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Winnipeg DW.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Winnipeg DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2020 Terrascope.tif",
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2021 Terrascope.tif"
@@ -53,7 +53,7 @@ datasets = {
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
         "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
         "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_10m/Ottawa DW.tif",
+        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Ottawa DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2020 Terrascope.tif",
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2021 Terrascope.tif"
