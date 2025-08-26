@@ -192,7 +192,7 @@ for city, dataset in datasets.items():
 ## ------------------------------------------- PROCESS FRACTIONAL CANOPY COVER RASTERS -------------------------------------------
 
 def process_fractional_raster(args):
-    city, raster_path, subgeom, grid_id, epsg, cell_area, size = args
+    city, raster_path, subgeom, grid_id, epsg, cell_area, size, source = args
 
     c = subgeom.centroid
     sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
@@ -201,6 +201,7 @@ def process_fractional_raster(args):
         "grid_id": grid_id,
         "subgrid_id": sub_id,
         "city": city,
+        "source": source,
         "Grid Cell Size": size
     }
 
@@ -255,7 +256,7 @@ def process_fractional_raster(args):
 grid_sizes = [120, 60, 40, 30, 20, 10]
 
 def process_subgrid(args):
-    city, raster_path, subgeom, grid_id, epsg, cell_area, size = args
+    city, raster_path, subgeom, grid_id, epsg, cell_area, size, source = args
 
     c = subgeom.centroid
     sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
@@ -264,6 +265,7 @@ def process_subgrid(args):
         "grid_id": grid_id,          # original grid ID
         "subgrid_id": sub_id,        # new subgrid ID
         "city": city,
+        "source": source,
         "Grid Cell Size": size
     }
     try:
@@ -339,8 +341,6 @@ def main():
             (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
         )
 
-        grid_sizes = [120, 60, 40, 30, 20, 10]
-
         for source in ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021", "GLCF", "GLOBMAPFTC"]:
             raster_path = dataset[source]
 
@@ -349,7 +349,7 @@ def main():
 
                 for i, row in bayan_gdf.iterrows():
                     subgeom = row.geometry
-                    args = (city, raster_path, subgeom, row["grid_id"], epsg, cell_area, size)
+                    args = (city, raster_path, subgeom, row["grid_id"], epsg, cell_area, size, source)
 
                     if source in ["GLCF", "GLOBMAPFTC"]:
                         # Fractional-cover raster
