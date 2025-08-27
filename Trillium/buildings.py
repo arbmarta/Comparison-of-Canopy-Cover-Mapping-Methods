@@ -60,7 +60,7 @@ def main():
     ott_bayan = add_grid_id(gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618"))
 
     # Read and reproject all buildings
-    van_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Vancouver Buildings.fgb').to_crs("EPSG:32610")
+    van_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Vancouver Buildings.fgb', layer='Layer1').to_crs("EPSG:32610")
     wpg_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Winnipeg Buildings.shp').to_crs("EPSG:32614")
     ott_buildings = gpd.read_file('/scratch/arbmarta/Buildings/Ottawa Buildings.shp').to_crs("EPSG:32618")
 
