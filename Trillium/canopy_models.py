@@ -15,9 +15,9 @@ wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs(
 ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
 
 rasters = {
-    "Vancouver": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
-    "Winnipeg": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
-    "Ottawa": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
+    "Vancouver": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
+    "Winnipeg": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
+    "Ottawa": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
 }
 
 OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
