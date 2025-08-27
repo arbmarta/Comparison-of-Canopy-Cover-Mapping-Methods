@@ -14,6 +14,7 @@ N_CPUS = 192
 datasets = {
     "Vancouver": {
         "epsg": 32610,
+        "LiDAR": "/scratch/arbmarta/CHMs/LiDAR/Vancouver LiDAR.tif",
         "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
@@ -24,6 +25,7 @@ datasets = {
     },
     "Winnipeg": {
         "epsg": 32614,
+        "LiDAR": "/scratch/arbmarta/CHMs/LiDAR/Winnipeg LiDAR.tif",
         "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
@@ -34,6 +36,7 @@ datasets = {
     },
     "Ottawa": {
         "epsg": 32618,
+        "LiDAR": "/scratch/arbmarta/CHMs/LiDAR/Ottawa LiDAR.tif",
         "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
@@ -44,7 +47,7 @@ datasets = {
     }
 }
 
-chms = ["ETH", "Meta", "Potapov"]
+chms = ["LiDAR", "ETH", "Meta", "Potapov"]
 lcs = ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
 raster_keys = chms + lcs
 
