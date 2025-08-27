@@ -9,6 +9,11 @@ from multiprocessing import Pool
 import pandas as pd
 from tqdm import tqdm
 
+# Constants
+N_CPUS = 192
+OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
+os.makedirs(OUT_DIR, exist_ok=True)
+
 # Input boundaries
 van_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Vancouver/TVAN.shp').to_crs("EPSG:32610")
 wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs("EPSG:32614")
@@ -20,24 +25,26 @@ rasters = {
     "Ottawa": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
 }
 
-OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
-os.makedirs(OUT_DIR, exist_ok=True)
-
 grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
 
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
+    """Convert binary raster to polygons - for LiDAR binary data (1=canopy, 0=no canopy)"""
     band = masked_arr[0]
     valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
     if nodata is not None:
         valid &= (band != nodata)
-    mask_vals = valid & (band >= 2)
-    results = [(shape(geom), float(val)) for geom, val in shapes(band, mask=mask_vals, transform=out_transform) if val >= 2]
+    
+    # For binary LiDAR: 1 = canopy, 0 = no canopy
+    mask_vals = valid & (band == 1)
+    results = [(shape(geom), int(val)) for geom, val in shapes(band, mask=mask_vals, transform=out_transform) if val == 1]
+    
     if not results:
         return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=None)
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
 def compute_fragmentation_metrics(polygon_df, grid_area=14400):
+    """Compute landscape fragmentation metrics"""
     if polygon_df.empty:
         return pd.Series({ "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0 })
 
@@ -59,6 +66,7 @@ def compute_fragmentation_metrics(polygon_df, grid_area=14400):
     return pd.Series({ "PAFRAC": pafrac, "nLSI": nlsi, "CAI_AM": cai_am, "LSI": lsi, "ED": ed })
 
 def process_subgrid(args):
+    """Process a single subgrid for LiDAR canopy analysis"""
     city, raster_path, subgeom, grid_id, epsg, cell_area, size = args
 
     c = subgeom.centroid
@@ -75,6 +83,7 @@ def process_subgrid(args):
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [subgeom], crop=True)
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
+            
             if polygons.empty:
                 result.update({
                     "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
@@ -89,16 +98,23 @@ def process_subgrid(args):
                 clipped["m2"] = clipped.geometry.area
                 clipped["perimeter"] = clipped.geometry.length
 
-                result["total_m2"] = total_m2 = clipped["m2"].sum()
-                result["polygon_count"] = poly_ct = len(clipped)
-                result["total_perimeter"] = clipped["perimeter"].sum()
-                result["percent_cover"] = (total_m2 / cell_area) * 100
-                result["mean_patch_size"] = total_m2 / poly_ct if poly_ct else 0
-                result["patch_density"] = poly_ct / cell_area
-                result["area_cv"] = clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0
-                result["perimeter_cv"] = clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
+                total_m2 = clipped["m2"].sum()
+                poly_ct = len(clipped)
+                
+                result.update({
+                    "total_m2": total_m2,
+                    "polygon_count": poly_ct,
+                    "total_perimeter": clipped["perimeter"].sum(),
+                    "percent_cover": (total_m2 / cell_area) * 100,
+                    "mean_patch_size": total_m2 / poly_ct if poly_ct else 0,
+                    "patch_density": poly_ct / cell_area,
+                    "area_cv": clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0,
+                    "perimeter_cv": clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
+                })
                 result.update(compute_fragmentation_metrics(clipped, grid_area=cell_area))
-    except:
+                
+    except Exception as e:
+        print(f"Error processing {city} subgrid: {e}")
         result.update({
             "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
@@ -108,6 +124,7 @@ def process_subgrid(args):
     return result
 
 def main():
+    print("Building processing tasks...")
     tasks = []
 
     for city, config in rasters.items():
@@ -121,7 +138,7 @@ def main():
             parent_geom = row.geometry
             parent_id = row.grid_id
             cell_area = 120 * 120
-            tasks.append((city, raster, parent_geom, parent_id, epsg, cell_area, 120))  # ← full grid
+            tasks.append((city, raster, parent_geom, parent_id, epsg, cell_area, 120))  # full grid
     
             minx, miny, maxx, maxy = parent_geom.bounds
             for size in grid_sizes:
@@ -138,16 +155,22 @@ def main():
                             continue
                         tasks.append((city, raster, subgeom, parent_id, epsg, size*size, size))
 
-    with Pool(processes=os.cpu_count()) as pool:
-        results = list(tqdm(pool.imap_unordered(process_subgrid, tasks), total=len(tasks)))
+    print(f"Processing {len(tasks)} tasks using {N_CPUS} CPUs...")
 
+    with Pool(processes=N_CPUS) as pool:
+        results = list(tqdm(pool.imap_unordered(process_subgrid, tasks), total=len(tasks), desc="Processing LiDAR subgrids"))
+
+    print("Saving results...")
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "subgrid_id", "Grid Cell Size", "total_m2", "percent_cover", "polygon_count",
         "mean_patch_size", "patch_density", "total_perimeter",
         "area_cv", "perimeter_cv", "PAFRAC", "nLSI", "CAI_AM", "LSI", "ED"]
     df = df[cols]
-    df.to_csv(os.path.join(OUT_DIR, "lidar_and_canopy_metrics.csv"), index=False)
-    print("Saved: lidar_and_canopy_metrics.csv")
+    
+    output_path = os.path.join(OUT_DIR, "lidar_and_canopy_metrics.csv")
+    df.to_csv(output_path, index=False)
+    print(f"Saved: {output_path}")
+    print(f"Total records: {len(df)}")
 
 if __name__ == "__main__":
     main()
