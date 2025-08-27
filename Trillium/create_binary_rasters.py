@@ -13,46 +13,37 @@ from rasterio.windows import from_bounds
 from tqdm import tqdm
 
 # Constants
-OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
+OUT_DIR = "/scratch/arbmarta/Binary Rasters"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 ## ------------------------------------------- INPUT DATASETS -------------------------------------------
 
 datasets = {
     "Vancouver": {
-        "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": 32610,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Vancouver DW.tif", # Trees indicated by Value 1
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif", # Trees indicated by Value 10
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
     },
     "Winnipeg": {
-        "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
         "epsg": 32614,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Winnipeg DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2020 Terrascope.tif",
         "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2021 Terrascope.tif"
     },
     "Ottawa": {
-        "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
         "epsg": 32618,
         "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
         "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
         "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
         "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Ottawa DW.tif",
         "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2020 Terrascope.tif",
@@ -60,8 +51,16 @@ datasets = {
     }
 }
 
-raster_keys = ["ETH", "Meta", "Potapov", "GLCF", "GLOBMAPFTC",
-               "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
+chms = ["ETH", "Meta", "Potapov"]
+lcs = ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
+
+# Dictionary mapping each land cover type to its specific canopy value
+canopy_values = {
+    "DW_10m": 1,
+    "ESRI": 2,
+    "Terrascope 2020": 10,
+    "Terrascope 2021": 10
+}
 
 ## ------------------------------------------- FUNCTIONS TO CHECK PROJECTION OF RASTERS AND SHAPEFILES -------------------------------------------
 
@@ -104,150 +103,107 @@ for city, info in datasets.items():
     if all_match:
         print(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
 
-## ------------------------------------------- CHECK RASTER COVERAGE OF BAYAN SHAPEFILES -------------------------------------------
-
-for city, info in datasets.items():
-    bayan_gdf = gpd.read_file(info["shp"]).to_crs(info["epsg"])
-    bayan_bounds = bayan_gdf.total_bounds  # [minx, miny, maxx, maxy]
-
-    for key in raster_keys:
-        if key in info:
-            raster_path = info[key]
-            try:
-                with rasterio.open(raster_path) as src:
-                    raster_bounds = src.bounds  # left, bottom, right, top
-
-                    # Check if raster fully covers shapefile
-                    if (raster_bounds.left > bayan_bounds[0] or
-                        raster_bounds.bottom > bayan_bounds[1] or
-                        raster_bounds.right < bayan_bounds[2] or
-                        raster_bounds.top < bayan_bounds[3]):
-                        print(f"[Coverage Error] {city} raster '{key}' does not fully cover the bayan shapefile")
-            except Exception as e:
-                print(f"[Error] Could not open {city} raster '{key}' for coverage check: {e}")
-
 ## ------------------------------------------- CONVERT CANOPY HEIGHT MODELS TO BINARY CANOPY COVER MAPS -------------------------------------------
 
-def create_canopy_mask_from_chm(raster_path, boundary_gdf=None):
-    with rasterio.open(raster_path) as src:
-        data = src.read(1).astype(float)
-        profile = src.profile
+print("Starting CHM to binary raster conversion...")
 
-        canopy_mask = (data >= 2).astype(np.uint8)
+# Create a list of all CHM file paths to process for the progress bar
+files_to_process = [
+    datasets[city][chm_key]
+    for city in datasets
+    for chm_key in chms
+    if chm_key in datasets[city]
+]
 
-        if boundary_gdf is not None:
-            if boundary_gdf.crs != src.crs:
-                boundary_gdf = boundary_gdf.to_crs(src.crs)
-            out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
-            canopy_mask = (out_image[0].astype(float) >= 2).astype(np.uint8)
-            profile.update({
-                "height": out_image.shape[1],
-                "width": out_image.shape[2],
-                "transform": src.window_transform(
-                    rasterio.windows.from_bounds(*boundary_gdf.total_bounds, transform=src.transform)
-                )
-            })
+# Process each CHM file
+for chm_path in tqdm(files_to_process, desc="Converting Rasters"):
+    try:
+        # Construct the full output path while preserving the original filename
+        file_name = os.path.basename(chm_path)
+        output_path = os.path.join(OUT_DIR, file_name)
 
-        return canopy_mask[np.newaxis, :, :], profile
+        # Open the source CHM raster
+        with rasterio.open(chm_path) as src:
+            # Get the metadata (profile) from the source raster
+            profile = src.profile.copy()
+            
+            # Read the raster's data, filling nodata values with 0
+            # This ensures nodata areas are treated as False (0) in the next step
+            chm_data = src.read(1, masked=True).filled(0)
+
+            # Apply the binary threshold condition:
+            # Pixels >= 2 become True (1), and pixels < 2 (including former nodata) become False (0)
+            binary_data = (chm_data >= 2).astype(rasterio.uint8)
+
+            # Update the profile for the output binary raster
+            profile.update(
+                dtype=rasterio.uint8,
+                count=1,
+                compress='lzw'
+            )
+            
+            # Remove the nodata key from profile since we filled all nodata values
+            profile.pop('nodata', None)
+
+            # Write the new binary data to the output file
+            with rasterio.open(output_path, 'w', **profile) as dst:
+                dst.write(binary_data, 1)
+
+    except Exception as e:
+        print(f"An error occurred while processing {chm_path}: {e}")
+
+print(f"\n✅ Conversion complete. Binary rasters are saved in: {OUT_DIR}")
 
 ## ------------------------------------------- CONVERT LAND COVER RASTERS TO BINARY CANOPY COVER MAPS -------------------------------------------
 
-def create_canopy_mask_from_lc_raster(raster_path, canopy_value, boundary_gdf=None):
-    with rasterio.open(raster_path) as src:
-        data = src.read(1)
-        profile = src.profile
+print("Starting Land Cover to binary raster conversion...")
 
-        canopy_mask = (data == canopy_value).astype(np.uint8)
+# Create a list of (file_path, lc_key) tuples to process
+files_to_process = [
+    (datasets[city][lc_key], lc_key)
+    for city in datasets
+    for lc_key in lcs
+    if lc_key in datasets[city]
+]
 
-        if boundary_gdf is not None:
-            if boundary_gdf.crs != src.crs:
-                boundary_gdf = boundary_gdf.to_crs(src.crs)
-            out_image, _ = mask(src, boundary_gdf.geometry, crop=True)
-            canopy_mask = (out_image[0] == canopy_value).astype(np.uint8)
-            profile.update({
-                "height": out_image.shape[1],
-                "width": out_image.shape[2],
-                "transform": src.window_transform(
-                    rasterio.windows.from_bounds(*boundary_gdf.total_bounds, transform=src.transform)
-                )
-            })
-
-        return canopy_mask[np.newaxis, :, :], profile
-
-canopy_values = {
-    "DW_10m": 1,
-    "ESRI": 2,
-    "Terrascope 2020": 10,
-    "Terrascope 2021": 10
-}
-
-for city, dataset in datasets.items():
-    boundary = gpd.read_file(dataset["shp"])
-
-    for lc_type in ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]:
-        canopy_val = canopy_values[lc_type]
-        raster_path = dataset[lc_type]
-        mask_array, meta = create_canopy_mask_from_lc_raster(raster_path, canopy_val, boundary)
-
-## ------------------------------------------- PROCESS FRACTIONAL CANOPY COVER RASTERS -------------------------------------------
-
-def process_fractional_raster(args):
-    city, raster_path, subgeom, grid_id, epsg, cell_area, size, source = args
-
-    c = subgeom.centroid
-    sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
-
-    result = {
-        "grid_id": grid_id,
-        "subgrid_id": sub_id,
-        "city": city,
-        "source": source,
-        "Grid Cell Size": size
-    }
-
+# Process each land cover file
+for lc_path, lc_key in tqdm(files_to_process, desc="Converting LC Rasters"):
     try:
-        with rasterio.open(raster_path) as src:
-            out_image, out_transform = mask(src, [subgeom], crop=True)
-            band = out_image[0]
+        # Get the specific value that represents canopy for this dataset
+        target_value = canopy_values[lc_key]
 
-            # Convert raster to polygons for calculation
-            polygons = [
-                (shape(geom), float(val))
-                for geom, val in shapes(band, mask=(band > 0), transform=out_transform)
-            ]
+        # Construct the full output path while preserving the original filename
+        file_name = os.path.basename(lc_path)
+        output_path = os.path.join(OUT_DIR, file_name)
 
-            if not polygons:
-                result.update({
-                    "total_m2": 0,
-                    "percent_cover": 0,
-                    "polygon_count": 0
-                })
-            else:
-                gdf = gpd.GeoDataFrame(
-                    {"value": [v for _, v in polygons]},
-                    geometry=[g for g, _ in polygons],
-                    crs=src.crs
-                )
-                gdf = gdf.to_crs(epsg)
-                clipped = gpd.overlay(
-                    gdf,
-                    gpd.GeoDataFrame(geometry=[subgeom], crs=epsg),
-                    how="intersection"
-                )
-                clipped["pixel_area"] = clipped.geometry.area
-                clipped["canopy_m2"] = clipped["pixel_area"] * (clipped["value"] / 100)
+        # Open the source land cover raster
+        with rasterio.open(lc_path) as src:
+            # Get the metadata from the source raster
+            profile = src.profile.copy()
+            
+            # Read the raster's data, filling nodata values with a non-target value (e.g., 0)
+            # This ensures nodata areas are treated as False (0) in the next step
+            lc_data = src.read(1, masked=True).filled(0)
 
-                result["total_m2"] = clipped["canopy_m2"].sum()
-                result["polygon_count"] = len(clipped)
-                result["percent_cover"] = (result["total_m2"] / cell_area) * 100
+            # Apply the binary condition:
+            # Pixels that equal the target_value become 1, all others become 0
+            binary_data = (lc_data == target_value).astype(rasterio.uint8)
+
+            # Update the profile for the output binary raster
+            profile.update(
+                dtype=rasterio.uint8,
+                count=1,
+                compress='lzw'
+            )
+            
+            # Remove the nodata key from profile since we filled all nodata values
+            profile.pop('nodata', None)
+
+            # Write the new binary data to the output file
+            with rasterio.open(output_path, 'w', **profile) as dst:
+                dst.write(binary_data, 1)
 
     except Exception as e:
-        print(f"Error in {city}, {grid_id}, {size}: {e}")
-        result.update({
-            "total_m2": 0,
-            "percent_cover": 0,
-            "polygon_count": 0
-        })
+        print(f"An error occurred while processing {lc_path}: {e}")
 
-    return result
-    main()
+print(f"\n✅ Land Cover conversion complete. Binary rasters are saved in: {OUT_DIR}")
