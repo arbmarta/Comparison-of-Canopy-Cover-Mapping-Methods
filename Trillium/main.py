@@ -22,41 +22,35 @@ datasets = {
     "Vancouver": {
         "shp": "/scratch/arbmarta/Trinity/Vancouver/TVAN.shp",
         "epsg": 32610,
-        "ETH": "/scratch/arbmarta/CHMs/ETH/Vancouver ETH.tif",
-        "Meta": "/scratch/arbmarta/CHMs/Meta/Vancouver Meta.tif",
-        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Vancouver Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Vancouver DW.tif", # Trees indicated by Value 1
-        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Vancouver ESRI.tif", # Trees indicated by Value 2
-        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2020 Terrascope.tif", # Trees indicated by Value 10
-        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Vancouver 2021 Terrascope.tif"
+        "ETH": "/scratch/arbmarta/Binary Rasters/Vancouver ETH.tif",
+        "Meta": "/scratch/arbmarta/Binary Rasters/Vancouver Meta.tif",
+        "Potapov": "/scratch/arbmarta/Binary Rasters/Vancouver Potapov.tif",
+        "DW_10m": "/scratch/arbmarta/Binary Rasters/Vancouver DW.tif",
+        "ESRI": "/scratch/arbmarta/Binary Rasters/Vancouver ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Vancouver 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Vancouver 2021 Terrascope.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
         "epsg": 32614,
-        "ETH": "/scratch/arbmarta/CHMs/ETH/Winnipeg ETH.tif",
-        "Meta": "/scratch/arbmarta/CHMs/Meta/Winnipeg Meta.tif",
-        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Winnipeg Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Winnipeg DW.tif",
-        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Winnipeg ESRI.tif",
-        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2020 Terrascope.tif",
-        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Winnipeg 2021 Terrascope.tif"
+        "ETH": "/scratch/arbmarta/Binary Rasters/Winnipeg ETH.tif",
+        "Meta": "/scratch/arbmarta/Binary Rasters/Winnipeg Meta.tif",
+        "Potapov": "/scratch/arbmarta/Binary Rasters/Winnipeg Potapov.tif",
+        "DW_10m": "/scratch/arbmarta/Binary Rasters/Winnipeg DW.tif",
+        "ESRI": "/scratch/arbmarta/Binary Rasters/Winnipeg ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Winnipeg 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Winnipeg 2021 Terrascope.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
         "epsg": 32618,
-        "ETH": "/scratch/arbmarta/CHMs/ETH/Ottawa ETH.tif",
-        "Meta": "/scratch/arbmarta/CHMs/Meta/Ottawa Meta.tif",
-        "Potapov": "/scratch/arbmarta/CHMs/Potapov/Ottawa Potapov.tif",
-        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
-        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif",
-        "DW_10m": "/scratch/arbmarta/Land Cover/DW_2020/Ottawa DW.tif",
-        "ESRI": "/scratch/arbmarta/Land Cover/ESRI/Ottawa ESRI.tif",
-        "Terrascope 2020": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2020 Terrascope.tif",
-        "Terrascope 2021": "/scratch/arbmarta/Land Cover/Terrascope/Ottawa 2021 Terrascope.tif"
+        "ETH": "/scratch/arbmarta/Binary Rasters/Ottawa ETH.tif",
+        "Meta": "/scratch/arbmarta/Binary Rasters/Ottawa Meta.tif",
+        "Potapov": "/scratch/arbmarta/Binary Rasters/Ottawa Potapov.tif",
+        "DW_10m": "/scratch/arbmarta/Binary Rasters/Ottawa DW.tif",
+        "ESRI": "/scratch/arbmarta/Binary Rasters/Ottawa ESRI.tif",
+        "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Ottawa 2020 Terrascope.tif",
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Ottawa 2021 Terrascope.tif"
     }
 }
 
