@@ -1,20 +1,13 @@
 import os
-import numpy as np
-import pandas as pd
 import geopandas as gpd
 import rasterio
-from rasterio.mask import mask
-from rasterio.features import shapes
-from shapely.geometry import shape
 from multiprocessing import Pool
-from rasterio.warp import calculate_default_transform, reproject, Resampling
-import rasterio.io
-from rasterio.windows import from_bounds
 from tqdm import tqdm
 
 # Constants
 OUT_DIR = "/scratch/arbmarta/Binary Rasters"
 os.makedirs(OUT_DIR, exist_ok=True)
+N_CPUS = 192
 
 ## ------------------------------------------- INPUT DATASETS -------------------------------------------
 
@@ -53,6 +46,7 @@ datasets = {
 
 chms = ["ETH", "Meta", "Potapov"]
 lcs = ["DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
+raster_keys = chms + lcs
 
 # Dictionary mapping each land cover type to its specific canopy value
 canopy_values = {
@@ -62,61 +56,15 @@ canopy_values = {
     "Terrascope 2021": 10
 }
 
-## ------------------------------------------- FUNCTIONS TO CHECK PROJECTION OF RASTERS AND SHAPEFILES -------------------------------------------
+## ------------------------------------------- FUNCTIONS -------------------------------------------
 
 def get_epsg_int(crs):
     if crs is None:
         return None
     return int(crs.to_string().split(":")[1])
 
-for city, info in datasets.items():
-    target_epsg = info["epsg"]
-    
-    # Shapefile EPSG
-    gdf = gpd.read_file(info["shp"])
-    shp_epsg = get_epsg_int(gdf.crs)
-    if shp_epsg is None:
-        print(f"[Error] {city} shapefile has no CRS defined")
-    elif shp_epsg != target_epsg:
-        print(f"[Mismatch] {city} shapefile EPSG: {shp_epsg} != {target_epsg}")
-    else:
-        print(f"[OK] {city} shapefile EPSG matches {target_epsg}")
-
-    # Raster EPSG
-    all_match = True
-    for key in raster_keys:
-        if key in info:
-            raster_path = info[key]
-            try:
-                with rasterio.open(raster_path) as src:
-                    raster_epsg = get_epsg_int(src.crs)
-                    if raster_epsg is None:
-                        print(f"[Mismatch] {city} raster '{key}' has no CRS defined")
-                        all_match = False
-                    elif raster_epsg != target_epsg:
-                        print(f"[Mismatch] {city} raster '{key}' EPSG: {raster_epsg} != {target_epsg}")
-                        all_match = False
-            except Exception as e:
-                print(f"[Error] Could not open {city} raster '{key}': {e}")
-                all_match = False
-
-    if all_match:
-        print(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
-
-## ------------------------------------------- CONVERT CANOPY HEIGHT MODELS TO BINARY CANOPY COVER MAPS -------------------------------------------
-
-print("Starting CHM to binary raster conversion...")
-
-# Create a list of all CHM file paths to process for the progress bar
-files_to_process = [
-    datasets[city][chm_key]
-    for city in datasets
-    for chm_key in chms
-    if chm_key in datasets[city]
-]
-
-# Process each CHM file
-for chm_path in tqdm(files_to_process, desc="Converting Rasters"):
+def process_chm_file(chm_path):
+    """Process a single CHM file to binary format"""
     try:
         # Construct the full output path while preserving the original filename
         file_name = os.path.basename(chm_path)
@@ -128,11 +76,9 @@ for chm_path in tqdm(files_to_process, desc="Converting Rasters"):
             profile = src.profile.copy()
             
             # Read the raster's data, filling nodata values with 0
-            # This ensures nodata areas are treated as False (0) in the next step
             chm_data = src.read(1, masked=True).filled(0)
 
-            # Apply the binary threshold condition:
-            # Pixels >= 2 become True (1), and pixels < 2 (including former nodata) become False (0)
+            # Apply the binary threshold condition
             binary_data = (chm_data >= 2).astype(rasterio.uint8)
 
             # Update the profile for the output binary raster
@@ -149,25 +95,15 @@ for chm_path in tqdm(files_to_process, desc="Converting Rasters"):
             with rasterio.open(output_path, 'w', **profile) as dst:
                 dst.write(binary_data, 1)
 
+        return f"Success: {file_name}"
+    
     except Exception as e:
-        print(f"An error occurred while processing {chm_path}: {e}")
+        return f"Error processing {chm_path}: {e}"
 
-print(f"\n✅ Conversion complete. Binary rasters are saved in: {OUT_DIR}")
-
-## ------------------------------------------- CONVERT LAND COVER RASTERS TO BINARY CANOPY COVER MAPS -------------------------------------------
-
-print("Starting Land Cover to binary raster conversion...")
-
-# Create a list of (file_path, lc_key) tuples to process
-files_to_process = [
-    (datasets[city][lc_key], lc_key)
-    for city in datasets
-    for lc_key in lcs
-    if lc_key in datasets[city]
-]
-
-# Process each land cover file
-for lc_path, lc_key in tqdm(files_to_process, desc="Converting LC Rasters"):
+def process_lc_file(lc_info):
+    """Process a single land cover file to binary format"""
+    lc_path, lc_key = lc_info
+    
     try:
         # Get the specific value that represents canopy for this dataset
         target_value = canopy_values[lc_key]
@@ -181,12 +117,10 @@ for lc_path, lc_key in tqdm(files_to_process, desc="Converting LC Rasters"):
             # Get the metadata from the source raster
             profile = src.profile.copy()
             
-            # Read the raster's data, filling nodata values with a non-target value (e.g., 0)
-            # This ensures nodata areas are treated as False (0) in the next step
+            # Read the raster's data, filling nodata values with 0
             lc_data = src.read(1, masked=True).filled(0)
 
-            # Apply the binary condition:
-            # Pixels that equal the target_value become 1, all others become 0
+            # Apply the binary condition
             binary_data = (lc_data == target_value).astype(rasterio.uint8)
 
             # Update the profile for the output binary raster
@@ -196,14 +130,110 @@ for lc_path, lc_key in tqdm(files_to_process, desc="Converting LC Rasters"):
                 compress='lzw'
             )
             
-            # Remove the nodata key from profile since we filled all nodata values
+            # Remove the nodata key from profile
             profile.pop('nodata', None)
 
             # Write the new binary data to the output file
             with rasterio.open(output_path, 'w', **profile) as dst:
                 dst.write(binary_data, 1)
 
+        return f"Success: {file_name}"
+    
     except Exception as e:
-        print(f"An error occurred while processing {lc_path}: {e}")
+        return f"Error processing {lc_path}: {e}"
+
+def check_raster_projection(city_info):
+    """Check projection for a single city's rasters"""
+    city, info = city_info
+    target_epsg = info["epsg"]
+    results = []
+    
+    for key in raster_keys:
+        if key in info:
+            raster_path = info[key]
+            try:
+                with rasterio.open(raster_path) as src:
+                    raster_epsg = get_epsg_int(src.crs)
+                    if raster_epsg is None:
+                        results.append(f"[Mismatch] {city} raster '{key}' has no CRS defined")
+                    elif raster_epsg != target_epsg:
+                        results.append(f"[Mismatch] {city} raster '{key}' EPSG: {raster_epsg} != {target_epsg}")
+            except Exception as e:
+                results.append(f"[Error] Could not open {city} raster '{key}': {e}")
+    
+    if not results:
+        results.append(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
+    
+    return results
+
+## ------------------------------------------- CHECK PROJECTIONS IN PARALLEL -------------------------------------------
+
+print("Checking raster projections...")
+
+with Pool(N_CPUS) as pool:
+    projection_results = pool.map(check_raster_projection, datasets.items())
+
+# Print all projection results
+for city_results in projection_results:
+    for result in city_results:
+        print(result)
+
+## ------------------------------------------- CONVERT CHM RASTERS IN PARALLEL -------------------------------------------
+
+print("\nStarting CHM to binary raster conversion...")
+
+# Create a list of all CHM file paths to process
+chm_files = [
+    datasets[city][chm_key]
+    for city in datasets
+    for chm_key in chms
+    if chm_key in datasets[city]
+]
+
+print(f"Processing {len(chm_files)} CHM files using {N_CPUS} CPUs...")
+
+# Process CHM files in parallel
+with Pool(N_CPUS) as pool:
+    # Use imap for progress tracking
+    results = list(tqdm(
+        pool.imap(process_chm_file, chm_files),
+        total=len(chm_files),
+        desc="Converting CHM Rasters"
+    ))
+
+# Print results
+for result in results:
+    if result.startswith("Error"):
+        print(result)
+
+print(f"\n✅ CHM conversion complete. Binary rasters are saved in: {OUT_DIR}")
+
+## ------------------------------------------- CONVERT LAND COVER RASTERS IN PARALLEL -------------------------------------------
+
+print("\nStarting Land Cover to binary raster conversion...")
+
+# Create a list of (file_path, lc_key) tuples to process
+lc_files = [
+    (datasets[city][lc_key], lc_key)
+    for city in datasets
+    for lc_key in lcs
+    if lc_key in datasets[city]
+]
+
+print(f"Processing {len(lc_files)} Land Cover files using {N_CPUS} CPUs...")
+
+# Process land cover files in parallel
+with Pool(N_CPUS) as pool:
+    # Use imap for progress tracking
+    results = list(tqdm(
+        pool.imap(process_lc_file, lc_files),
+        total=len(lc_files),
+        desc="Converting LC Rasters"
+    ))
+
+# Print results
+for result in results:
+    if result.startswith("Error"):
+        print(result)
 
 print(f"\n✅ Land Cover conversion complete. Binary rasters are saved in: {OUT_DIR}")
