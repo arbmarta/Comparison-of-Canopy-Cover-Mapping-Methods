@@ -15,12 +15,12 @@ wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs(
 ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
 
 rasters = {
-    "Vancouver": {"LiDAR": '/scratch/arbmarta/LiDAR/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
-    "Winnipeg": {"LiDAR": '/scratch/arbmarta/LiDAR/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
-    "Ottawa": {"LiDAR": '/scratch/arbmarta/LiDAR/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
+    "Vancouver": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
+    "Winnipeg": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
+    "Ottawa": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
 }
 
-OUT_DIR = "/scratch/arbmarta/Outputs"
+OUT_DIR = "/scratch/arbmarta/Outputs/CSVs"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 grid_sizes = [120, 60, 40, 30, 20, 10]  # Subgrid sizes
@@ -146,8 +146,8 @@ def main():
         "mean_patch_size", "patch_density", "total_perimeter",
         "area_cv", "perimeter_cv", "PAFRAC", "nLSI", "CAI_AM", "LSI", "ED"]
     df = df[cols]
-    df.to_csv(os.path.join(OUT_DIR, "LiDAR_Fragmentation_By_Subgrid.csv"), index=False)
-    print("Saved: LiDAR_Fragmentation_By_Subgrid.csv")
+    df.to_csv(os.path.join(OUT_DIR, "lidar_and_canopy_metrics.csv"), index=False)
+    print("Saved: lidar_and_canopy_metrics.csv")
 
 if __name__ == "__main__":
     main()
