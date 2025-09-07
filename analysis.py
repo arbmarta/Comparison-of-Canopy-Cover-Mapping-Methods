@@ -9,6 +9,8 @@ import seaborn as sns
 from scipy.stats import pearsonr
 from sklearn.ensemble import RandomForestRegressor
 import shap
+from sklearn.linear_model import LinearRegression
+import matplotlib.ticker as mtick
 
 ## -------------------------------------------------- PLOTTING SETUP ---------------------------------------------------
 #region
@@ -278,6 +280,8 @@ print("Saved annotated correlation matrix to 'Correlations.csv'")
 
 #endregion
 
+exit()
+
 ## ----------------------------------------------- RANDOM FOREST MODELS ------------------------------------------------
 #region
 
@@ -489,7 +493,6 @@ plt.show()
 
 # Prepare results for total (all cities combined)
 results_total = []
-
 methods_to_compare = [m for m in method_order if m != "lidar"]
 
 for method in methods_to_compare:
@@ -599,6 +602,115 @@ ax.set_ylabel("")
 
 plt.tight_layout()
 plt.savefig("Figure 3.png", dpi=600, bbox_inches='tight')
+plt.show()
+
+#endregion
+
+## ------------------------------------------ FIGURE 4: METHOD vs LIDAR -------------------------------------------
+#region
+
+# ----------------- STYLE & SETTINGS -----------------
+scatter_cmap = "Greens"
+scatter_alpha = 0.9
+scatter_size = 22  # not used for hexbin
+reg_line_color = "red"
+reg_line_width = 3
+one_to_one_color = "black"
+one_to_one_style = "--"
+one_to_one_width = 3
+font_size_title = 20
+font_size_axes = 16
+font_size_metrics = 18
+metrics_location = dict(x=0.98, y=0.02)
+metrics_bbox_props = dict(facecolor='white', alpha=0.8, edgecolor='none', pad=4)
+figsize = (16, 16)
+
+# Method renaming dictionary
+method_labels = {
+    "meta_percent_cover": "Meta",
+    "eth_percent_cover": "ETH",
+    "potapov_percent_cover": "Potapov",
+    "glcf_percent_cover": "GLCF",
+    "globmapftc_percent_cover": "GLOBMAP",
+    "esri_percent_cover": "ESRI",
+    "dw_10m_percent_cover": "Dynamic World",
+    "terrascope 2020_percent_cover": "Terrascope 2020",
+    "terrascope 2021_percent_cover": "Terrascope 2021"
+}
+
+methods_grid = [
+    ["meta_percent_cover", "eth_percent_cover", "potapov_percent_cover"],
+    ["glcf_percent_cover", "globmapftc_percent_cover", "esri_percent_cover"],
+    ["dw_10m_percent_cover", "terrascope 2020_percent_cover", "terrascope 2021_percent_cover"]
+]
+
+fig, axes = plt.subplots(3, 3, figsize=figsize, sharex=True, sharey=True)
+
+y_true_full = df_metrics["lidar_percent_cover"].to_numpy().ravel()
+
+for i, row in enumerate(methods_grid):
+    for j, method in enumerate(row):
+        ax = axes[i, j]
+
+        y_pred_full = df_metrics[method].to_numpy().ravel()
+
+        # ----------------- DENSITY -----------------
+        x_plot, y_plot = y_true_full, y_pred_full
+
+        hb = ax.hexbin(
+            x_plot, y_plot,
+            gridsize=1500,
+            cmap="Greens_r",  # reversed colormap: dark = high density
+            mincnt=1,
+            alpha=scatter_alpha)
+
+        # ----------------- REGRESSION -----------------
+        model = LinearRegression().fit(y_true_full.reshape(-1, 1), y_pred_full)
+        y_line = model.predict(y_true_full.reshape(-1, 1))
+        ax.plot(y_true_full, y_line, color=reg_line_color, linewidth=reg_line_width)
+
+        # ----------------- 1:1 LINE -----------------
+        ax.plot([0, 100], [0, 100], color=one_to_one_color, linestyle=one_to_one_style, linewidth=one_to_one_width)
+
+        # ----------------- METRICS -----------------
+        r2 = r2_score(y_true_full, y_pred_full)
+        mae = mean_absolute_error(y_true_full, y_pred_full)
+        rmse = np.sqrt(mean_squared_error(y_true_full, y_pred_full))
+        ax.text(
+            metrics_location['x'], metrics_location['y'],
+            f"R²={r2:.3f}\nRMSE={rmse:.2f}\nMAE={mae:.2f}",
+            transform=ax.transAxes,
+            fontsize=font_size_metrics,
+            va="bottom",
+            ha="right",
+            bbox=metrics_bbox_props
+        )
+
+        # ----------------- TITLE -----------------
+        ax.set_title(method_labels.get(method, method), fontsize=font_size_title)
+
+# ----------------- AXES LABELS BASED ON SPECIFIC SUBPLOTS -----------------
+# y-axis on first column, second row
+axes[1, 0].set_ylabel("Estimated UTC", fontsize=font_size_axes, fontweight='bold')
+
+# x-axis on second column, third row
+axes[2, 1].set_xlabel(
+    "ALS-Derived UTC",
+    fontsize=font_size_axes,
+    fontweight='bold',
+    labelpad=20  # increase padding (default is ~4-6)
+)
+
+# ----------------- AXES FORMATTING -----------------
+for ax in axes.flatten():
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
+    ax.xaxis.set_major_formatter(mtick.PercentFormatter())
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter())
+    ax.tick_params(axis='both', labelsize=font_size_axes)
+
+plt.tight_layout()
+plt.savefig("Figure 4.png", dpi=600, bbox_inches="tight")
 plt.show()
 
 #endregion
