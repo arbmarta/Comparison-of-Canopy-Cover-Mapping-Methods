@@ -7,7 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
-import statsmodels.formula.api as smf
 from sklearn.ensemble import RandomForestRegressor
 import shap
 
@@ -308,8 +307,8 @@ for col in df_metrics.columns:
 
         # Fit Random Forest
         rf = RandomForestRegressor(
-            n_estimators=500, 
-            random_state=42, 
+            n_estimators=500,
+            random_state=42,
             n_jobs=-1
         )
         rf.fit(X, y)
@@ -601,4 +600,5 @@ ax.set_ylabel("")
 plt.tight_layout()
 plt.savefig("Figure 3.png", dpi=600, bbox_inches='tight')
 plt.show()
+
 #endregion
