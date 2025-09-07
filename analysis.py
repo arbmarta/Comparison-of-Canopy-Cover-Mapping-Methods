@@ -1,5 +1,5 @@
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from scipy.stats import gaussian_kde, pearsonr
+from scipy.stats import gaussian_kde
 from scipy.spatial.distance import jensenshannon
 import matplotlib.lines as mlines
 import pandas as pd
@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
 import statsmodels.formula.api as smf
-from itertools import combinations
 
 ## -------------------------------------------------- PLOTTING SETUP ---------------------------------------------------
 #region
@@ -310,215 +309,33 @@ plt.title('Correlation Matrix of Predictor Variables')
 plt.tight_layout()
 plt.show()
 
+# Predictor variables
+model_vars = [
+    'lidar_total_m2',
 
-def find_best_fragmentation_model(df_metrics, dep_var='meta_percent_cover_dev'):
-    """Find best fragmentation model for a given dependent variable"""
+    # Canopy fragmentation variables
+    'polygon_count',
+    'mean_patch_size',
+    'total_perimeter',
+    'area_cv',
+    'perimeter_cv',
+    'LSI',
 
-    # Base variables (always included)
-    base_vars = [
-        'lidar_total_m2',
-        'built_area_total_m2',
-        'number_of_buildings',
-        'mean_building_size'
+    # Building variables
+    'built_area_total_m2',
+    'number_of_buildings',
+    'mean_building_size',
     ]
 
-    # Fragmentation variables to test combinations of
-    fragmentation_vars = [
-        'polygon_count',
-        'mean_patch_size',
-        'total_perimeter',
-        'area_cv',
-        'perimeter_cv',
-        'LSI'
-    ]
+print(df_metrics.columns)
 
-    best_llf = -np.inf
-    best_model = None
-    best_vars = None
-    results = []
-
-    print(f"Testing fragmentation variable combinations for {dep_var}")
-    print("=" * 70)
-
-    # Test all possible combinations of fragmentation variables (1 to all)
-    for r in range(1, len(fragmentation_vars) + 1):
-        for frag_combo in combinations(fragmentation_vars, r):
-
-            # Combine base + current fragmentation combination
-            current_vars = base_vars + list(frag_combo)
-
-            try:
-                # Prepare data
-                model_data = df_metrics[current_vars + ['city', dep_var]].dropna()
-
-                # Check if we have enough data
-                if len(model_data) < 10:  # Need minimum observations
-                    continue
-
-                # Log transform skewed variables
-                log_vars = []
-                final_vars = []
-
-                for var in current_vars:
-                    skewness = model_data[var].skew()
-                    if abs(skewness) > 2:
-                        log_vars.append(var)
-                        model_data[f'log_{var}'] = np.log(model_data[var] + 1)
-                        final_vars.append(f'log_{var}')
-                    else:
-                        final_vars.append(var)
-
-                # Build and fit model
-                formula = f'{dep_var} ~ ' + ' + '.join(final_vars)
-                model = smf.mixedlm(formula, data=model_data, groups=model_data['city']).fit()
-
-                # Store results
-                result = {
-                    'dependent_var': dep_var,
-                    'fragmentation_vars': list(frag_combo),
-                    'n_frag_vars': len(frag_combo),
-                    'total_vars': len(current_vars),
-                    'llf': model.llf,
-                    'aic': model.aic,
-                    'bic': model.bic,
-                    'formula': formula,
-                    'n_obs': len(model_data)
-                }
-                results.append(result)
-
-                # Check if this is the best model so far
-                if model.llf > best_llf:
-                    best_llf = model.llf
-                    best_model = model
-                    best_vars = current_vars
-
-                print(f"Fragmentation vars: {list(frag_combo)}")
-                print(f"  Log-likelihood: {model.llf:.3f}, AIC: {model.aic:.3f}, BIC: {model.bic:.3f}")
-
-            except Exception as e:
-                print(f"Failed for {list(frag_combo)}: {e}")
-                continue
-
-    # Convert results to DataFrame and sort by log-likelihood
-    results_df = pd.DataFrame(results)
-    if not results_df.empty:
-        results_df = results_df.sort_values('llf', ascending=False)
-
-        print(f"\n{'=' * 70}")
-        print("TOP 5 MODELS BY LOG-LIKELIHOOD:")
-        print(f"{'=' * 70}")
-        print(results_df[['fragmentation_vars', 'llf', 'aic', 'bic']].head())
-
-        print(f"\n{'=' * 70}")
-        print("BEST MODEL RESULTS:")
-        print(f"{'=' * 70}")
-        print(f"Best fragmentation variables: {results_df.iloc[0]['fragmentation_vars']}")
-        print(f"Log-likelihood: {best_llf:.3f}")
-        if best_model:
-            print(f"AIC: {best_model.aic:.3f}")
-            print(f"BIC: {best_model.bic:.3f}")
-            print(f"\nModel Summary:")
-            print(best_model.summary())
-    else:
-        print("No successful models fitted!")
-
-    return best_model, results_df
-
-
-def run_fragmentation_analysis_for_all_methods(df_metrics):
-    """Run fragmentation analysis for all *_percent_cover_dev columns"""
-
-    # Find all columns ending with '_percent_cover_dev'
-    dev_columns = [col for col in df_metrics.columns if col.endswith('_percent_cover_dev')]
-
-    print(f"Found {len(dev_columns)} deviation columns: {dev_columns}")
-    print("\n" + "=" * 100)
-
-    # Store results for all methods
-    all_results = {}
-    all_best_models = {}
-    summary_results = []
-
-    for dep_var in dev_columns:
-        print(f"\n{'=' * 100}")
-        print(f"ANALYZING: {dep_var}")
-        print(f"{'=' * 100}")
-
-        # Check if the column has enough non-null values
-        non_null_count = df_metrics[dep_var].count()
-        if non_null_count < 10:
-            print(f"Skipping {dep_var}: Only {non_null_count} non-null values")
-            continue
-
-        try:
-            best_model, results_df = find_best_fragmentation_model(df_metrics, dep_var)
-
-            # Store results
-            all_results[dep_var] = results_df
-            all_best_models[dep_var] = best_model
-
-            # Extract method name for summary
-            method_name = dep_var.replace('_percent_cover_dev', '')
-
-            # Add to summary if we got results
-            if not results_df.empty:
-                best_result = results_df.iloc[0]
-                summary_results.append({
-                    'method': method_name,
-                    'dependent_var': dep_var,
-                    'best_fragmentation_vars': best_result['fragmentation_vars'],
-                    'n_frag_vars': best_result['n_frag_vars'],
-                    'llf': best_result['llf'],
-                    'aic': best_result['aic'],
-                    'bic': best_result['bic'],
-                    'n_obs': best_result['n_obs']
-                })
-
-        except Exception as e:
-            print(f"ERROR analyzing {dep_var}: {e}")
-            continue
-
-    # Create summary DataFrame
-    summary_df = pd.DataFrame(summary_results)
-
-    print(f"\n{'=' * 100}")
-    print("SUMMARY OF ALL METHODS")
-    print(f"{'=' * 100}")
-
-    if not summary_df.empty:
-        # Sort by log-likelihood
-        summary_df = summary_df.sort_values('llf', ascending=False)
-
-        print("\nBest models for each method (sorted by log-likelihood):")
-        print(summary_df[['method', 'best_fragmentation_vars', 'n_frag_vars', 'llf', 'aic', 'bic']].to_string(
-            index=False))
-
-        # Find most common fragmentation variables
-        all_frag_vars = []
-        for frag_list in summary_df['best_fragmentation_vars']:
-            all_frag_vars.extend(frag_list)
-
-        from collections import Counter
-        var_counts = Counter(all_frag_vars)
-
-        print(f"\nMost frequently selected fragmentation variables:")
-        for var, count in var_counts.most_common():
-            print(f"  {var}: {count}/{len(summary_df)} methods ({count / len(summary_df) * 100:.1f}%)")
-
-    else:
-        print("No successful analyses completed!")
-
-    return all_best_models, all_results, summary_df
-
-
-# Run the comprehensive analysis
-print("Starting comprehensive fragmentation analysis for all methods...")
-all_best_models, all_results, summary_df = run_fragmentation_analysis_for_all_methods(df_metrics)
-
-# Optional: Save results to CSV
-if not summary_df.empty:
-    summary_df.to_csv("fragmentation_analysis_summary.csv", index=False)
-    print(f"\nSaved summary results to 'fragmentation_analysis_summary.csv'")
+# loop across all canopy cover deviation variables
+for col in df_metrics.columns:
+    if col.endswith("_percent_cover_dev"):
+        formula = f"{col} ~ {' + '.join(model_vars)}"
+        model = smf.ols(formula, data=df_metrics).fit(cov_type="HC3")
+        print(f"\n=== OLS results for {col} ===")
+        print(model.summary())
 
 #endregion
 
