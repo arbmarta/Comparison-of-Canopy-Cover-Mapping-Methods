@@ -370,7 +370,7 @@ for group_name, methods in method_groups.items():
         # Metrics
         r2 = r2_score(y, y_pred)
         mae = mean_absolute_error(y, y_pred)
-        rmse = mean_squared_error(y, y_pred, squared=False)
+        rmse = np.sqrt(mean_squared_error(y, y_pred))
 
         # ------------------ Scatter plot ------------------
         ax_scatter.scatter(y, y_pred, color='darkgreen', alpha=0.7, s=20)
