@@ -280,9 +280,8 @@ print("Saved annotated correlation matrix to 'Correlations.csv'")
 
 #endregion
 
-exit()
-
 ## ----------------------------------------------- RANDOM FOREST MODELS ------------------------------------------------
+
 #region
 
 # Predictor variables
@@ -303,43 +302,201 @@ model_vars = [
     'mean_building_size',
     ]
 
-# RF and SHAP, loop across all canopy cover deviation variables
+model_labels = {
+    'lidar_total_m2': 'ALS-Derived UTC (m²)',
+    'polygon_count': 'Canopy Patches (#)',
+    'mean_patch_size': 'Mean Canopy Patch Size (m²)',
+    'total_perimeter': 'Total Perimeter (m)',
+    'area_cv': 'Coefficient of Variation: Area (m²)',
+    'perimeter_cv': 'Coefficient of Variation: Perimeter (m)',
+    'LSI': 'Landscape Shape Index',
+    'built_area_total_m2': 'Built Area (m²)',
+    'number_of_buildings': 'Number of Buildings',
+    'mean_building_size': 'Mean Building Size (m²)'
+}
+
+var_colors = {
+    'lidar_total_m2': 'darkgreen',
+    'polygon_count': 'lightgreen',
+    'mean_patch_size': 'lightgreen',
+    'total_perimeter': 'lightgreen',
+    'area_cv': 'lightgreen',
+    'perimeter_cv': 'lightgreen',
+    'LSI': 'lightgreen',
+    'built_area_total_m2': 'orange',
+    'number_of_buildings': 'orange',
+    'mean_building_size': 'orange'
+}
+
+model_labels = {v: v for v in model_vars}  # Can rename if desired
+
+method_labels = {
+    "meta_percent_cover": "Meta",
+    "eth_percent_cover": "ETH",
+    "potapov_percent_cover": "Potapov",
+    "glcf_percent_cover": "GLCF",
+    "globmapftc_percent_cover": "GLOBMAP",
+    "esri_percent_cover": "ESRI",
+    "dw_10m_percent_cover": "Dynamic World",
+    "terrascope 2020_percent_cover": "Terrascope 2020",
+    "terrascope 2021_percent_cover": "Terrascope 2021"
+}
+
+# ------------------ Method groups ------------------
+method_groups = {
+    "CHMs": ["meta_percent_cover", "eth_percent_cover", "potapov_percent_cover"],
+    "Fractional": ["glcf_percent_cover", "globmapftc_percent_cover", "esri_percent_cover"],
+    "LandCover": ["dw_10m_percent_cover", "terrascope 2020_percent_cover", "terrascope 2021_percent_cover"]
+}
+
+# ------------------ Loop over groups ------------------
+for group_name, methods in method_groups.items():
+    fig, axes = plt.subplots(len(methods), 3, figsize=(18, 6*len(methods)))
+
+    if len(methods) == 1:  # ensure axes is 2D
+        axes = axes.reshape(1, 3)
+
+    for i, method in enumerate(methods):
+        ax_scatter, ax_feat, ax_shap = axes[i]
+
+        X = df_metrics[model_vars]
+        y = df_metrics["lidar_percent_cover"]
+
+        # Random Forest
+        rf = RandomForestRegressor(n_estimators=500, random_state=42, n_jobs=-1)
+        rf.fit(X, y)
+        y_pred = rf.predict(X)
+
+        # Metrics
+        r2 = r2_score(y, y_pred)
+        mae = mean_absolute_error(y, y_pred)
+        rmse = mean_squared_error(y, y_pred, squared=False)
+
+        # ------------------ Scatter plot ------------------
+        ax_scatter.scatter(y, y_pred, color='darkgreen', alpha=0.7, s=20)
+        ax_scatter.plot([0, 100], [0, 100], 'k--', linewidth=2)
+        ax_scatter.set_xlim(0, 100)
+        ax_scatter.set_ylim(0, 100)
+        ax_scatter.set_title(f"{method_labels.get(method)} - Predicted vs Actual", fontsize=16, fontweight='bold')
+        ax_scatter.set_xlabel("LiDAR Percent Cover (%)", fontsize=14, fontweight='bold')
+        ax_scatter.set_ylabel("Predicted Percent Cover (%)", fontsize=14, fontweight='bold')
+        ax_scatter.text(0.95, 0.05, f"R²={r2:.3f}\nMAE={mae:.2f}\nRMSE={rmse:.2f}",
+                        transform=ax_scatter.transAxes, ha='right', va='bottom',
+                        bbox=dict(facecolor='white', alpha=0.8, edgecolor='none', pad=4),
+                        fontsize=12)
+
+        # ------------------ Feature importance ------------------
+        importances = dict(zip(model_vars, rf.feature_importances_))
+        top6 = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:6]
+        features, values = zip(*top6)
+        colors = [var_colors[f] for f in features]
+        ax_feat.barh([model_labels[f] for f in features][::-1], values[::-1], color=colors[::-1])
+        ax_feat.set_title("Top-6 Feature Importance", fontsize=16, fontweight='bold')
+
+        # ------------------ SHAP summary ------------------
+        explainer = shap.TreeExplainer(rf)
+        shap_values = explainer(X[list(features)])
+        shap.summary_plot(shap_values, X[list(features)], plot_type="bar", show=False, ax=ax_shap)
+        ax_shap.set_title("Top-6 SHAP Summary", fontsize=16, fontweight='bold')
+
+    plt.tight_layout()
+    plt.savefig(f"RF_SHAP_{group_name}.png", dpi=600, bbox_inches='tight')
+    plt.show()
+
+#endregion
+
+exit()
+
+## ----------------------------------------------- RANDOM FOREST MODELS - DRAFT ------------------------------------------------
+#region
+
+# Predictor variables
+model_vars = [
+    'lidar_total_m2',
+
+    # Canopy fragmentation variables
+    'polygon_count',
+    'mean_patch_size',
+    'total_perimeter',
+    'area_cv',
+    'perimeter_cv',
+    'LSI',
+
+    # Building variables
+    'built_area_total_m2',
+    'number_of_buildings',
+    'mean_building_size',
+    ]
+
+model_labels = {
+    'lidar_total_m2': 'ALS-Derived UTC (m²)',
+    'polygon_count': 'Canopy Patches (#)',
+    'mean_patch_size': 'Mean Canopy Patch Size (m²)',
+    'total_perimeter': 'Total Perimeter (m)',
+    'area_cv': 'Coefficient of Variation: Area (m²)',
+    'perimeter_cv': 'Coefficient of Variation: Perimeter (m)',
+    'LSI': 'Landscape Shape Index',
+    'built_area_total_m2': 'Built Area (m²)',
+    'number_of_buildings': 'Number of Buildings',
+    'mean_building_size': 'Mean Building Size (m²)'
+}
+
+# Define colors for variable types
+var_colors = {
+    'lidar_total_m2': 'darkgreen',  # lidar
+    'polygon_count': 'lightgreen',
+    'mean_patch_size': 'lightgreen',
+    'total_perimeter': 'lightgreen',
+    'area_cv': 'lightgreen',
+    'perimeter_cv': 'lightgreen',
+    'LSI': 'lightgreen',
+    'built_area_total_m2': 'grey',  # building
+    'number_of_buildings': 'grey',
+    'mean_building_size': 'grey'
+}
+
+method_labels = {
+    "meta_percent_cover": "Meta",
+    "eth_percent_cover": "ETH",
+    "potapov_percent_cover": "Potapov",
+    "glcf_percent_cover": "GLCF",
+    "globmapftc_percent_cover": "GLOBMAP",
+    "esri_percent_cover": "ESRI",
+    "dw_10m_percent_cover": "Dynamic World",
+    "terrascope 2020_percent_cover": "Terrascope 2020",
+    "terrascope 2021_percent_cover": "Terrascope 2021"
+}
+
+# ----------------- Random Forest & Top-6 Feature Plot -----------------
 for col in df_metrics.columns:
     if col.endswith("_percent_cover_dev"):
         X = df_metrics[model_vars]
         y = df_metrics[col]
 
         # Fit Random Forest
-        rf = RandomForestRegressor(
-            n_estimators=500,
-            random_state=42,
-            n_jobs=-1
-        )
+        rf = RandomForestRegressor(n_estimators=500, random_state=42, n_jobs=-1)
         rf.fit(X, y)
         y_pred = rf.predict(X)
 
         print(f"\n=== Random Forest results for {col} ===")
         print(f"R²: {r2_score(y, y_pred):.3f}")
         print(f"MAE: {mean_absolute_error(y, y_pred):.3f}")
-        print(f"RMSE: {np.sqrt(mean_squared_error(y, y_pred)):.3f}")
+        print(f"RMSE: {mean_squared_error(y, y_pred, squared=False):.3f}")
 
         # Feature importance
         importances = dict(zip(model_vars, rf.feature_importances_))
-        print("Feature importances:", importances)
+        sorted_features = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:6]
+        features, values = zip(*sorted_features)
+        colors = [var_colors[f] for f in features]
+        labels = [model_labels[f] for f in features]
 
-        # --- SHAP values ---
-        explainer = shap.TreeExplainer(rf)
-        shap_values = explainer.shap_values(X)
-
-        # Global summary plot (bar chart of mean |SHAP|)
-        shap.summary_plot(shap_values, X, plot_type="bar", show=True)
-
-        # Detailed summary plot (beeswarm of all samples)
-        shap.summary_plot(shap_values, X, show=True)
-
-        # Example: SHAP force plot for first observation
-        shap.initjs()
-        display(shap.force_plot(explainer.expected_value, shap_values[0,:], X.iloc[0,:]))
+        # Plot
+        plt.figure(figsize=(8, 5))
+        plt.barh(labels[::-1], values[::-1], color=colors[::-1])
+        plt.xlabel("Feature Importance")
+        plt.title(f"Top 6 Features: {method_labels.get(col, col)}")
+        plt.tight_layout()
+        plt.show()
 
 #endregion
 
