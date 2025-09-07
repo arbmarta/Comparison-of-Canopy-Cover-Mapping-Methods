@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import pearsonr
 import statsmodels.formula.api as smf
+from sklearn.ensemble import RandomForestRegressor
+import shap
 
 ## -------------------------------------------------- PLOTTING SETUP ---------------------------------------------------
 #region
@@ -277,37 +279,8 @@ print("Saved annotated correlation matrix to 'Correlations.csv'")
 
 #endregion
 
-## -------------------------------------------- MIXED LINEAR EFFECTS MODELS --------------------------------------------
+## ----------------------------------------------- RANDOM FOREST MODELS ------------------------------------------------
 #region
-
-# Multicollinearity matrix
-predictor_vars = [
-    'lidar_total_m2',
-
-        # Canopy fragmentation variables
-        'polygon_count',
-        'mean_patch_size',
-        'total_perimeter',
-        'area_cv',
-        'perimeter_cv',
-        'LSI',
-
-        # Building variables
-        'built_area_total_m2',
-        'number_of_buildings',
-        'mean_building_size',
-    ]
-
-# Calculate and print correlation matrix
-corr_matrix = df_metrics[predictor_vars].corr()
-
-# Create visual correlation matrix
-plt.figure(figsize=(10, 8))
-sns.heatmap(corr_matrix, annot=True, cmap='RdBu_r', center=0,
-            square=True, fmt='.3f')
-plt.title('Correlation Matrix of Predictor Variables')
-plt.tight_layout()
-plt.show()
 
 # Predictor variables
 model_vars = [
@@ -327,19 +300,45 @@ model_vars = [
     'mean_building_size',
     ]
 
-print(df_metrics.columns)
-
-# loop across all canopy cover deviation variables
+# RF and SHAP, loop across all canopy cover deviation variables
 for col in df_metrics.columns:
     if col.endswith("_percent_cover_dev"):
-        formula = f"{col} ~ {' + '.join(model_vars)}"
-        model = smf.ols(formula, data=df_metrics).fit(cov_type="HC3")
-        print(f"\n=== OLS results for {col} ===")
-        print(model.summary())
+        X = df_metrics[model_vars]
+        y = df_metrics[col]
+
+        # Fit Random Forest
+        rf = RandomForestRegressor(
+            n_estimators=500, 
+            random_state=42, 
+            n_jobs=-1
+        )
+        rf.fit(X, y)
+        y_pred = rf.predict(X)
+
+        print(f"\n=== Random Forest results for {col} ===")
+        print(f"R²: {r2_score(y, y_pred):.3f}")
+        print(f"MAE: {mean_absolute_error(y, y_pred):.3f}")
+        print(f"RMSE: {np.sqrt(mean_squared_error(y, y_pred)):.3f}")
+
+        # Feature importance
+        importances = dict(zip(model_vars, rf.feature_importances_))
+        print("Feature importances:", importances)
+
+        # --- SHAP values ---
+        explainer = shap.TreeExplainer(rf)
+        shap_values = explainer.shap_values(X)
+
+        # Global summary plot (bar chart of mean |SHAP|)
+        shap.summary_plot(shap_values, X, plot_type="bar", show=True)
+
+        # Detailed summary plot (beeswarm of all samples)
+        shap.summary_plot(shap_values, X, show=True)
+
+        # Example: SHAP force plot for first observation
+        shap.initjs()
+        display(shap.force_plot(explainer.expected_value, shap_values[0,:], X.iloc[0,:]))
 
 #endregion
-
-exit()
 
 ## ------------------------------------------- FIGURE 1: TOTAL CANOPY COVER --------------------------------------------
 #region
@@ -602,5 +601,4 @@ ax.set_ylabel("")
 plt.tight_layout()
 plt.savefig("Figure 3.png", dpi=600, bbox_inches='tight')
 plt.show()
-
 #endregion
