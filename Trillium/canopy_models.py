@@ -163,6 +163,13 @@ def process_grid(args):
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [grid_geom], crop=True)
+
+            # Create binary raster for CLUMPY: canopy >= 2 m
+            binary_canopy = (out_image[0] >= 2).astype(np.uint8)
+            clumpy_value = compute_clumpy(binary_canopy)
+            result["CLUMPY"] = clumpy_value
+
+            # Convert to polygons for fragmentation metrics
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
 
             if polygons.empty:
@@ -184,10 +191,10 @@ def process_grid(args):
 
                 result.update({
                     "total_m2": total_m2,
-                    "patch_count": patch_ct,
+                    "patch_count": poly_ct,
                     "total_perimeter": clipped["perimeter"].sum(),
                     "percent_cover": (total_m2 / 14400) * 100,
-                    "mean_patch_size": total_m2 / patch_ct if patch_ct else 0,
+                    "mean_patch_size": total_m2 / poly_ct if poly_ct else 0,
                     "area_cv": clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0,
                     "perimeter_cv": clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
                 })
