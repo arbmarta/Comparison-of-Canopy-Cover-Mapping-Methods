@@ -169,6 +169,10 @@ def process_grid(args):
             clumpy_value = compute_clumpy(binary_canopy)
             result["CLUMPY"] = clumpy_value
 
+            # Compute CHM height stats for this grid
+            chm_stats = compute_chm_stats(raster_path, grid_geom)
+            result.update(chm_stats)
+
             # Convert to polygons for fragmentation metrics
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
 
