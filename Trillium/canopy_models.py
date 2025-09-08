@@ -20,15 +20,74 @@ wpg_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp').to_crs(
 ott_bayan = gpd.read_file('/scratch/arbmarta/Trinity/Ottawa/TOTT.shp').to_crs("EPSG:32618")
 
 rasters = {
-    "Vancouver": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
-    "Winnipeg": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
-    "Ottawa": {"LiDAR": '/scratch/arbmarta/Binary Rasters/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
+    "Vancouver": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Vancouver LiDAR.tif', "bayan": van_bayan, "epsg": "EPSG:32610"},
+    "Winnipeg": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Winnipeg LiDAR.tif', "bayan": wpg_bayan, "epsg": "EPSG:32614"},
+    "Ottawa": {"LiDAR": '/scratch/arbmarta/CHMs/LiDAR/Ottawa LiDAR.tif', "bayan": ott_bayan, "epsg": "EPSG:32618"},
 }
 
-# Single grid size only
-GRID_SIZE = 120
-CELL_AREA = GRID_SIZE * GRID_SIZE
+def compute_chm_stats(grid_raster, grid_geom):
+    """Compute tree height stats within a grid for heights >0 and >=2 m"""
+    with rasterio.open(grid_raster) as src:
+        out_image, _ = mask(src, [grid_geom], crop=True)
+        data = out_image[0].astype(float)
 
+        # Heights > 0
+        data_pos = data[data > 0]
+        if data_pos.size == 0:
+            stats_pos = dict(min_height_0=0, max_height_0=0, mean_height_0=0, 
+                             median_height_0=0, std_height_0=0)
+        else:
+            stats_pos = dict(
+                min_height_0=np.min(data_pos),
+                max_height_0=np.max(data_pos),
+                mean_height_0=np.mean(data_pos),
+                median_height_0=np.median(data_pos),
+                std_height_0=np.std(data_pos)
+            )
+
+        # Heights >= 2
+        data_2 = data[data >= 2]
+        if data_2.size == 0:
+            stats_2 = dict(min_height_2=0, max_height_2=0, mean_height_2=0, 
+                           median_height_2=0, std_height_2=0)
+        else:
+            stats_2 = dict(
+                min_height_2=np.min(data_2),
+                max_height_2=np.max(data_2),
+                mean_height_2=np.mean(data_2),
+                median_height_2=np.median(data_2),
+                std_height_2=np.std(data_2)
+            )
+
+        # Combine both dictionaries
+        stats_pos.update(stats_2)
+        return stats_pos
+
+def compute_clumpy(binary_array):
+    """
+    Compute CLUMPY index from a 2D binary array (1=canopy, 0=no canopy)
+    Using adjacency counts: like adjacencies / expected like adjacencies
+    """
+    import numpy as np
+
+    # 4-neighbor adjacency
+    arr = binary_array
+    like = 0
+    total = 0
+
+    for dx, dy in [(0,1),(1,0)]:  # right and down neighbors
+        shifted = np.roll(arr, shift=-dx, axis=0)
+        shifted = np.roll(shifted, shift=-dy, axis=1)
+        mask = (np.arange(arr.shape[0]-dx)[:, None] < arr.shape[0]-dx) & (np.arange(arr.shape[1]-dy)[None, :] < arr.shape[1]-dy)
+        like += np.sum(arr[:-dx or None, :-dy or None] == shifted[:-dx or None, :-dy or None])
+        total += np.sum(mask)
+
+    p_obs = like / total if total > 0 else 0
+    p_exp = np.mean(arr)**2 if np.mean(arr) > 0 else 0
+
+    clumpy = (p_obs - p_exp) / (1 - p_exp) if p_exp < 1 else 0
+    return clumpy
+    
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
     """Convert binary raster to polygons - for LiDAR binary data (1=canopy, 0=no canopy)"""
     band = masked_arr[0]
@@ -45,7 +104,7 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def compute_fragmentation_metrics(polygon_df, grid_area=CELL_AREA, edge_depth=10):
+def compute_fragmentation_metrics(polygon_df, grid_area=14400, edge_depth=10):
     """
     Compute stable fragmentation metrics for a grid:
       - LSI: Landscape Shape Index
@@ -98,8 +157,7 @@ def process_grid(args):
 
     result = {
         "grid_id": grid_id,
-        "city": city,
-        "grid_size_m": GRID_SIZE
+        "city": city
     }
 
     try:
@@ -128,12 +186,12 @@ def process_grid(args):
                     "total_m2": total_m2,
                     "patch_count": patch_ct,
                     "total_perimeter": clipped["perimeter"].sum(),
-                    "percent_cover": (total_m2 / CELL_AREA) * 100,
+                    "percent_cover": (total_m2 / 14400) * 100,
                     "mean_patch_size": total_m2 / patch_ct if patch_ct else 0,
                     "area_cv": clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0,
                     "perimeter_cv": clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
                 })
-                result.update(compute_fragmentation_metrics(clipped, grid_area=CELL_AREA))
+                result.update(compute_fragmentation_metrics(clipped, grid_area=14400))
 
     except Exception as e:
         print(f"Error processing {city} grid: {e}")
@@ -168,7 +226,7 @@ def main():
 
     print("Saving results...")
     df = pd.DataFrame(results)
-    cols = ["city", "grid_id", "grid_size_m", "total_m2", "percent_cover", "patch_count",
+    cols = ["city", "grid_id", "total_m2", "percent_cover", "patch_count",
             "mean_patch_size", "total_perimeter",
             "area_cv", "perimeter_cv", "CAI_AM", "LSI"]
     df = df[cols]
