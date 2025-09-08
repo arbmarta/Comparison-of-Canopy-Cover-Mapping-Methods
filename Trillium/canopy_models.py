@@ -89,22 +89,17 @@ def compute_clumpy(binary_array):
     return clumpy
     
 def raster_to_polygons(masked_arr, out_transform, nodata=None):
-    """Convert binary raster to polygons - for LiDAR binary data (1=canopy, 0=no canopy)"""
+    """Convert a binary raster (1=canopy, 0=no canopy) to polygons"""
     band = masked_arr[0]
-    valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
-    if nodata is not None:
-        valid &= (band != nodata)
-
-    # For binary LiDAR: 1 = canopy, 0 = no canopy
-    mask_vals = valid & (band == 1)
-    results = [(shape(geom), int(val)) for geom, val in shapes(band, mask=mask_vals, transform=out_transform) if val == 1]
+    mask_vals = (band == 1)
+    results = [(shape(geom), 1) for geom, val in shapes(band, mask=mask_vals, transform=out_transform)]
 
     if not results:
         return gpd.GeoDataFrame(columns=["value", "geometry"], geometry=[], crs=None)
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def compute_fragmentation_metrics(polygon_df, grid_area=14400, edge_depth=10):
+def compute_fragmentation_metrics(polygon_df, grid_area=14400, edge_depth=2):
     """
     Compute stable fragmentation metrics for a grid:
       - LSI: Landscape Shape Index
@@ -161,7 +156,7 @@ def process_grid(args):
     }
 
     # Compute centroid in lat/lon
-    grid_centroid = gpd.GeoSeries([grid_geom], crs=epsg).to_crs("EPSG:4326").geometry[0]
+    grid_centroid = gpd.GeoSeries([grid_geom], crs=epsg).to_crs("EPSG:4326").geometry[0].centroid
     result["Longitude"] = grid_centroid.x
     result["Latitude"] = grid_centroid.y
 
@@ -169,14 +164,19 @@ def process_grid(args):
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [grid_geom], crop=True)
 
-            # Create binary raster for CLUMPY: canopy >= 2 m
-            binary_canopy = (out_image[0] >= 2).astype(np.uint8)
-            clumpy_value = compute_clumpy(binary_canopy)
-            result["CLUMPY"] = clumpy_value
-
             # Compute CHM height stats for this grid
             chm_stats = compute_chm_stats(raster_path, grid_geom)
             result.update(chm_stats)
+
+            # Create binary raster: canopy >= 2 m
+            binary_canopy = (out_image[0] >= 2).astype(np.uint8)
+            
+            # Compute CLUMPY
+            clumpy_value = compute_clumpy(binary_canopy)
+            result["CLUMPY"] = clumpy_value
+            
+            # Convert binary raster to polygons for fragmentation metrics
+            polygons = raster_to_polygons(binary_canopy[np.newaxis, :, :], out_transform, nodata=None)
 
             # Convert to polygons for fragmentation metrics
             polygons = raster_to_polygons(out_image, out_transform, src.nodata)
