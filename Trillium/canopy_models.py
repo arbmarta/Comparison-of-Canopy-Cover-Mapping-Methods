@@ -112,7 +112,7 @@ def process_grid(args):
                     "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
                     "percent_cover": 0, "mean_patch_size": 0,
                     "area_cv": 0, "perimeter_cv": 0,
-                    "PAFRAC": 0, "LSI": 0
+                    "CAI_AM": 0, "LSI": 0
                 })
             else:
                 polygons.set_crs(src.crs, inplace=True)
@@ -141,7 +141,7 @@ def process_grid(args):
             "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0,
             "area_cv": 0, "perimeter_cv": 0,
-            "PAFRAC": 0, "LSI": 0
+            "CAI_AM": 0, "LSI": 0
         })
     return result
 
@@ -170,7 +170,7 @@ def main():
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "grid_size_m", "total_m2", "percent_cover", "patch_count",
             "mean_patch_size", "total_perimeter",
-            "area_cv", "perimeter_cv", "PAFRAC", "LSI"]
+            "area_cv", "perimeter_cv", "CAI_AM", "LSI"]
     df = df[cols]
 
     output_path = os.path.join(OUT_DIR, "LiDAR_120m_Grid_Canopy_Metrics.csv")
