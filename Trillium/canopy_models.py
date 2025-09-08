@@ -160,6 +160,11 @@ def process_grid(args):
         "city": city
     }
 
+    # Compute centroid in lat/lon
+    grid_centroid = gpd.GeoSeries([grid_geom], crs=epsg).to_crs("EPSG:4326").geometry[0]
+    result["Longitude"] = grid_centroid.x
+    result["Latitude"] = grid_centroid.y
+
     try:
         with rasterio.open(raster_path) as src:
             out_image, out_transform = mask(src, [grid_geom], crop=True)
@@ -243,7 +248,8 @@ def main():
 
     print("Saving results...")
     df = pd.DataFrame(results)
-    cols = ["city", "grid_id", "total_m2", "percent_cover", "patch_count",
+    cols = ["city", "grid_id", "Latitude", "Longitude",
+            "total_m2", "percent_cover", "patch_count",
             "mean_patch_size", "total_perimeter",
             "area_cv", "perimeter_cv", "CAI_AM", "LSI",
             "CLUMPY",
