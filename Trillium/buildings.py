@@ -9,7 +9,7 @@ def add_grid_id(grid_gdf):
     centroids = grid_gdf.geometry.centroid
     grid_gdf["grid_id"] = (
         (centroids.x // 120).astype(int).astype(str) + "_" +
-        (centroids.y // 120).astype(int).astype(str) + "_120"
+        (centroids.y // 120).astype(int).astype(str)
     )
     return grid_gdf
 
