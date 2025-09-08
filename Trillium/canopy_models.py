@@ -30,34 +30,45 @@ def compute_chm_stats(grid_raster, grid_geom):
     with rasterio.open(grid_raster) as src:
         out_image, _ = mask(src, [grid_geom], crop=True)
         data = out_image[0].astype(float)
+        
+        # Debug: Check if we have any data
+        print(f"Data shape: {data.shape}")
+        print(f"Data range: {np.min(data)} to {np.max(data)}")
+        print(f"Non-zero values: {np.count_nonzero(data)}")
+        print(f"Values > 0: {np.sum(data > 0)}")
+        print(f"Values >= 2: {np.sum(data >= 2)}")
 
         # Heights > 0
         data_pos = data[data > 0]
         if data_pos.size == 0:
+            print("WARNING: No positive height values found!")
             stats_pos = dict(min_height_0=0, max_height_0=0, mean_height_0=0, 
                              median_height_0=0, std_height_0=0)
         else:
             stats_pos = dict(
-                min_height_0=np.min(data_pos),
-                max_height_0=np.max(data_pos),
-                mean_height_0=np.mean(data_pos),
-                median_height_0=np.median(data_pos),
-                std_height_0=np.std(data_pos)
+                min_height_0=float(np.min(data_pos)),
+                max_height_0=float(np.max(data_pos)),
+                mean_height_0=float(np.mean(data_pos)),
+                median_height_0=float(np.median(data_pos)),
+                std_height_0=float(np.std(data_pos))
             )
+            print(f"Stats for heights > 0: {stats_pos}")
 
         # Heights >= 2
         data_2 = data[data >= 2]
         if data_2.size == 0:
+            print("WARNING: No values >= 2m found!")
             stats_2 = dict(min_height_2=0, max_height_2=0, mean_height_2=0, 
                            median_height_2=0, std_height_2=0)
         else:
             stats_2 = dict(
-                min_height_2=np.min(data_2),
-                max_height_2=np.max(data_2),
-                mean_height_2=np.mean(data_2),
-                median_height_2=np.median(data_2),
-                std_height_2=np.std(data_2)
+                min_height_2=float(np.min(data_2)),
+                max_height_2=float(np.max(data_2)),
+                mean_height_2=float(np.mean(data_2)),
+                median_height_2=float(np.median(data_2)),
+                std_height_2=float(np.std(data_2))
             )
+            print(f"Stats for heights >= 2: {stats_2}")
 
         # Combine both dictionaries
         stats_pos.update(stats_2)
@@ -176,21 +187,23 @@ def process_grid(args):
             result["CLUMPY"] = clumpy_value
             
             # Convert binary raster to polygons for fragmentation metrics
+            # Use the binary_canopy array, not out_image
             polygons = raster_to_polygons(binary_canopy[np.newaxis, :, :], out_transform, nodata=None)
 
-            # Convert to polygons for fragmentation metrics
-            polygons = raster_to_polygons(out_image, out_transform, src.nodata)
-
             if polygons.empty:
+                # Keep the CHM stats that were already computed
                 result.update({
-                    "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
-                    "percent_cover": 0, "mean_patch_size": 0,
-                    "area_cv": 0, "perimeter_cv": 0,
-                    "CAI_AM": 0, "LSI": 0,
-                    "CLUMPY": 0,
-                    "min_height_0": 0, "max_height_0": 0, "mean_height_0": 0, "median_height_0": 0, "std_height_0": 0,
-                    "min_height_2": 0, "max_height_2": 0, "mean_height_2": 0, "median_height_2": 0, "std_height_2": 0
+                    "total_m2": 0, 
+                    "patch_count": 0, 
+                    "total_perimeter": 0,
+                    "percent_cover": 0, 
+                    "mean_patch_size": 0,
+                    "area_cv": 0, 
+                    "perimeter_cv": 0,
+                    "CAI_AM": 0, 
+                    "LSI": 0
                 })
+                # Don't overwrite CLUMPY and height stats - they're already set
             else:
                 polygons.set_crs(src.crs, inplace=True)
                 polygons = polygons.to_crs(epsg)
@@ -210,19 +223,26 @@ def process_grid(args):
                     "area_cv": clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0,
                     "perimeter_cv": clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
                 })
-                result.update(compute_fragmentation_metrics(clipped, grid_area=14400))
+                
+                # Compute fragmentation metrics
+                frag_metrics = compute_fragmentation_metrics(clipped, grid_area=14400)
+                result.update(frag_metrics)
 
     except Exception as e:
-        print(f"Error processing {city} grid: {e}")
+        print(f"Error processing {city} grid {grid_id}: {e}")
+        # Set all metrics to 0 on error
         result.update({
             "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0,
             "area_cv": 0, "perimeter_cv": 0,
             "CAI_AM": 0, "LSI": 0,
             "CLUMPY": 0,
-            "min_height_0": 0, "max_height_0": 0, "mean_height_0": 0, "median_height_0": 0, "std_height_0": 0,
-            "min_height_2": 0, "max_height_2": 0, "mean_height_2": 0, "median_height_2": 0, "std_height_2": 0
+            "min_height_0": 0, "max_height_0": 0, "mean_height_0": 0, 
+            "median_height_0": 0, "std_height_0": 0,
+            "min_height_2": 0, "max_height_2": 0, "mean_height_2": 0, 
+            "median_height_2": 0, "std_height_2": 0
         })
+    
     return result
 
 def main():
