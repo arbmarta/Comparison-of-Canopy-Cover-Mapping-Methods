@@ -239,7 +239,10 @@ def main():
     df = pd.DataFrame(results)
     cols = ["city", "grid_id", "total_m2", "percent_cover", "patch_count",
             "mean_patch_size", "total_perimeter",
-            "area_cv", "perimeter_cv", "CAI_AM", "LSI"]
+            "area_cv", "perimeter_cv", "CAI_AM", "LSI",
+            "CLUMPY",
+            "min_height_0","max_height_0","mean_height_0","median_height_0","std_height_0",
+            "min_height_2","max_height_2","mean_height_2","median_height_2","std_height_2"]
     df = df[cols]
 
     output_path = os.path.join(OUT_DIR, "LiDAR_120m_Grid_Canopy_Metrics.csv")
