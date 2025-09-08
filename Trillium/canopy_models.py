@@ -45,27 +45,52 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=None)
 
-def compute_fragmentation_metrics(polygon_df, grid_area=CELL_AREA):
-    """Compute landscape fragmentation metrics"""
+def compute_fragmentation_metrics(polygon_df, grid_area=CELL_AREA, edge_depth=10):
+    """
+    Compute stable fragmentation metrics for a grid:
+      - LSI: Landscape Shape Index
+      - CAI_AM: Area-Weighted Mean Core Area Index (percent)
+    
+    Parameters:
+        polygon_df: GeoDataFrame with patch polygons
+        grid_area: float, area of the grid (default 120*120)
+        edge_depth: float, buffer distance in meters to define "core"
+    
+    Returns:
+        pd.Series with keys: 'LSI', 'CAI_AM'
+    """
     if polygon_df.empty:
-        return pd.Series({ "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0 })
+        return pd.Series({"LSI": 0, "CAI_AM": 0})
 
+    # Compute total perimeter and area
     areas = polygon_df.geometry.area
     perimeters = polygon_df.geometry.length
+    total_area = areas.sum()
+    total_perimeter = perimeters.sum()
 
-    pafrac = 2 * (np.log(perimeters) / np.log(areas)).mean() if (areas > 0).all() and (perimeters > 0).all() else 0
-    E = perimeters.sum()
-    A = areas.sum()
-    lsi = E / (4 * np.sqrt(A)) if A > 0 else 0
-    max_lsi = (2 * np.sqrt(grid_area)) / (4 * np.sqrt(A)) if A > 0 else 1
-    nlsi = (lsi - 1) / (max_lsi - 1) if max_lsi != 1 else 0
+    # Landscape Shape Index (LSI)
+    lsi = total_perimeter / (4 * np.sqrt(total_area)) if total_area > 0 else 0
 
-    cores = polygon_df.geometry.buffer(-1)
-    cores = cores[cores.area > 0]
-    cai_am = cores.area.sum() / A if not cores.empty else 0
+    # Compute core areas for each patch
+    cai_values = []
+    weights = []
+    for patch in polygon_df.geometry:
+        patch_area = patch.area
+        if patch_area <= 0:
+            continue
 
-    ed = E / grid_area * 10000
-    return pd.Series({ "PAFRAC": pafrac, "nLSI": nlsi, "CAI_AM": cai_am, "LSI": lsi, "ED": ed })
+        # inward buffer to define core
+        core = patch.buffer(-edge_depth)
+        core_area = core.area if not core.is_empty else 0.0
+
+        cai_patch = (core_area / patch_area) * 100  # percent of patch that is core
+        cai_values.append(cai_patch)
+        weights.append(patch_area)
+
+    # Area-weighted mean core area index
+    cai_am = np.average(cai_values, weights=weights) if cai_values else 0
+
+    return pd.Series({"LSI": lsi, "CAI_AM": cai_am})
 
 def process_grid(args):
     """Process a single 120m grid for LiDAR canopy analysis"""
@@ -84,10 +109,10 @@ def process_grid(args):
 
             if polygons.empty:
                 result.update({
-                    "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
-                    "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
+                    "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
+                    "percent_cover": 0, "mean_patch_size": 0,
                     "area_cv": 0, "perimeter_cv": 0,
-                    "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0
+                    "PAFRAC": 0, "LSI": 0
                 })
             else:
                 polygons.set_crs(src.crs, inplace=True)
@@ -101,11 +126,10 @@ def process_grid(args):
 
                 result.update({
                     "total_m2": total_m2,
-                    "polygon_count": poly_ct,
+                    "patch_count": patch_ct,
                     "total_perimeter": clipped["perimeter"].sum(),
                     "percent_cover": (total_m2 / CELL_AREA) * 100,
-                    "mean_patch_size": total_m2 / poly_ct if poly_ct else 0,
-                    "patch_density": poly_ct / CELL_AREA,
+                    "mean_patch_size": total_m2 / patch_ct if patch_ct else 0,
                     "area_cv": clipped["m2"].std() / clipped["m2"].mean() if clipped["m2"].mean() > 0 else 0,
                     "perimeter_cv": clipped["perimeter"].std() / clipped["perimeter"].mean() if clipped["perimeter"].mean() > 0 else 0
                 })
@@ -114,10 +138,10 @@ def process_grid(args):
     except Exception as e:
         print(f"Error processing {city} grid: {e}")
         result.update({
-            "total_m2": 0, "polygon_count": 0, "total_perimeter": 0,
-            "percent_cover": 0, "mean_patch_size": 0, "patch_density": 0,
+            "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
+            "percent_cover": 0, "mean_patch_size": 0,
             "area_cv": 0, "perimeter_cv": 0,
-            "PAFRAC": 0, "nLSI": 0, "CAI_AM": 0, "LSI": 0, "ED": 0
+            "PAFRAC": 0, "LSI": 0
         })
     return result
 
@@ -144,9 +168,9 @@ def main():
 
     print("Saving results...")
     df = pd.DataFrame(results)
-    cols = ["city", "grid_id", "grid_size_m", "total_m2", "percent_cover", "polygon_count",
-        "mean_patch_size", "patch_density", "total_perimeter",
-        "area_cv", "perimeter_cv", "PAFRAC", "nLSI", "CAI_AM", "LSI", "ED"]
+    cols = ["city", "grid_id", "grid_size_m", "total_m2", "percent_cover", "patch_count",
+            "mean_patch_size", "total_perimeter",
+            "area_cv", "perimeter_cv", "PAFRAC", "LSI"]
     df = df[cols]
 
     output_path = os.path.join(OUT_DIR, "LiDAR_120m_Grid_Canopy_Metrics.csv")
