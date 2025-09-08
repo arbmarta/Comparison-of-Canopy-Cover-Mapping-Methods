@@ -181,7 +181,10 @@ def process_grid(args):
                     "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
                     "percent_cover": 0, "mean_patch_size": 0,
                     "area_cv": 0, "perimeter_cv": 0,
-                    "CAI_AM": 0, "LSI": 0
+                    "CAI_AM": 0, "LSI": 0,
+                    "CLUMPY": 0,
+                    "min_height_0": 0, "max_height_0": 0, "mean_height_0": 0, "median_height_0": 0, "std_height_0": 0,
+                    "min_height_2": 0, "max_height_2": 0, "mean_height_2": 0, "median_height_2": 0, "std_height_2": 0
                 })
             else:
                 polygons.set_crs(src.crs, inplace=True)
@@ -210,7 +213,10 @@ def process_grid(args):
             "total_m2": 0, "patch_count": 0, "total_perimeter": 0,
             "percent_cover": 0, "mean_patch_size": 0,
             "area_cv": 0, "perimeter_cv": 0,
-            "CAI_AM": 0, "LSI": 0
+            "CAI_AM": 0, "LSI": 0,
+            "CLUMPY": 0,
+            "min_height_0": 0, "max_height_0": 0, "mean_height_0": 0, "median_height_0": 0, "std_height_0": 0,
+            "min_height_2": 0, "max_height_2": 0, "mean_height_2": 0, "median_height_2": 0, "std_height_2": 0
         })
     return result
 
