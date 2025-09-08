@@ -77,7 +77,7 @@ def process_chm_file(chm_path):
         with rasterio.open(chm_path) as src:
             # Get the metadata (profile) from the source raster
             profile = src.profile.copy()
-            
+
             # Read the raster's data, filling nodata values with 0
             chm_data = src.read(1, masked=True).filled(0)
 
@@ -90,7 +90,7 @@ def process_chm_file(chm_path):
                 count=1,
                 compress='lzw'
             )
-            
+
             # Remove the nodata key from profile since we filled all nodata values
             profile.pop('nodata', None)
 
@@ -99,14 +99,14 @@ def process_chm_file(chm_path):
                 dst.write(binary_data, 1)
 
         return f"Success: {file_name}"
-    
+
     except Exception as e:
         return f"Error processing {chm_path}: {e}"
 
 def process_lc_file(lc_info):
     """Process a single land cover file to binary format"""
     lc_path, lc_key = lc_info
-    
+
     try:
         # Get the specific value that represents canopy for this dataset
         target_value = canopy_values[lc_key]
@@ -119,7 +119,7 @@ def process_lc_file(lc_info):
         with rasterio.open(lc_path) as src:
             # Get the metadata from the source raster
             profile = src.profile.copy()
-            
+
             # Read the raster's data, filling nodata values with 0
             lc_data = src.read(1, masked=True).filled(0)
 
@@ -132,7 +132,7 @@ def process_lc_file(lc_info):
                 count=1,
                 compress='lzw'
             )
-            
+
             # Remove the nodata key from profile
             profile.pop('nodata', None)
 
@@ -141,7 +141,7 @@ def process_lc_file(lc_info):
                 dst.write(binary_data, 1)
 
         return f"Success: {file_name}"
-    
+
     except Exception as e:
         return f"Error processing {lc_path}: {e}"
 
@@ -150,7 +150,7 @@ def check_raster_projection(city_info):
     city, info = city_info
     target_epsg = info["epsg"]
     results = []
-    
+
     for key in raster_keys:
         if key in info:
             raster_path = info[key]
@@ -163,10 +163,10 @@ def check_raster_projection(city_info):
                         results.append(f"[Mismatch] {city} raster '{key}' EPSG: {raster_epsg} != {target_epsg}")
             except Exception as e:
                 results.append(f"[Error] Could not open {city} raster '{key}': {e}")
-    
+
     if not results:
         results.append(f"[OK] All rasters for {city} have the correct EPSG {target_epsg}")
-    
+
     return results
 
 ## ------------------------------------------- CHECK PROJECTIONS IN PARALLEL -------------------------------------------
