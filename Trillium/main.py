@@ -26,7 +26,9 @@ datasets = {
         "DW_10m": "/scratch/arbmarta/Binary Rasters/Vancouver DW.tif",
         "ESRI": "/scratch/arbmarta/Binary Rasters/Vancouver ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Vancouver 2020 Terrascope.tif",
-        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Vancouver 2021 Terrascope.tif"
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Vancouver 2021 Terrascope.tif",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Vancouver GLCF.tif",
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Vancouver GLOBMAPFTC.tif"
     },
     "Winnipeg": {
         "shp": "/scratch/arbmarta/Trinity/Winnipeg/TWPG.shp",
@@ -37,7 +39,9 @@ datasets = {
         "DW_10m": "/scratch/arbmarta/Binary Rasters/Winnipeg DW.tif",
         "ESRI": "/scratch/arbmarta/Binary Rasters/Winnipeg ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Winnipeg 2020 Terrascope.tif",
-        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Winnipeg 2021 Terrascope.tif"
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Winnipeg 2021 Terrascope.tif",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Winnipeg GLCF.tif",
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Winnipeg GLOBMAPFTC.tif"
     },
     "Ottawa": {
         "shp": "/scratch/arbmarta/Trinity/Ottawa/TOTT.shp",
@@ -48,12 +52,19 @@ datasets = {
         "DW_10m": "/scratch/arbmarta/Binary Rasters/Ottawa DW.tif",
         "ESRI": "/scratch/arbmarta/Binary Rasters/Ottawa ESRI.tif",
         "Terrascope 2020": "/scratch/arbmarta/Binary Rasters/Ottawa 2020 Terrascope.tif",
-        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Ottawa 2021 Terrascope.tif"
+        "Terrascope 2021": "/scratch/arbmarta/Binary Rasters/Ottawa 2021 Terrascope.tif",
+        "GLCF": "/scratch/arbmarta/CCPs/GLCF/Ottawa GLCF.tif",
+        "GLOBMAPFTC": "/scratch/arbmarta/CCPs/GLOBMAPFTC/Ottawa GLOBMAPFTC.tif"
     }
 }
 
-raster_keys = ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
-grid_sizes = [120, 60, 40, 30, 20, 10]
+binary_raster_keys = ["ETH", "Meta", "Potapov", "DW_10m", "ESRI", "Terrascope 2020", "Terrascope 2021"]
+fractional_raster_keys = ["GLCF", "GLOBMAPFTC"]
+all_raster_keys = binary_raster_keys + fractional_raster_keys
+
+# Single grid size only
+GRID_SIZE = 120
+CELL_AREA = GRID_SIZE * GRID_SIZE
 
 ## ------------------------------------------- FUNCTIONS -------------------------------------------
 
@@ -62,7 +73,7 @@ def get_epsg_int(crs):
         return None
     return int(crs.to_string().split(":")[1])
 
-def raster_to_polygons(masked_arr, out_transform, nodata=None, crs=None):
+def raster_to_polygons_binary(masked_arr, out_transform, nodata=None, crs=None):
     """Convert binary raster to polygons"""
     band = masked_arr[0]
     valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
@@ -79,26 +90,41 @@ def raster_to_polygons(masked_arr, out_transform, nodata=None, crs=None):
     geoms, vals = zip(*results)
     return gpd.GeoDataFrame({"value": vals}, geometry=list(geoms), crs=crs)
 
-def process_subgrid(args):
-    """Process a single subgrid for canopy cover analysis"""
-    city, raster_path, subgeom, grid_id, epsg, cell_area, size, source = args
+def raster_to_polygons_fractional(masked_arr, out_transform, nodata=None, crs=None):
+    """Convert fractional raster to polygons with canopy cover percentages"""
+    band = masked_arr[0]
+    valid = ~np.isnan(band) if np.issubdtype(band.dtype, np.floating) else np.ones_like(band, dtype=bool)
+    if nodata is not None:
+        valid &= (band != nodata)
 
-    c = subgeom.centroid
-    sub_id = f"{int(c.x // size)}_{int(c.y // size)}_{size}"
+    # For fractional data, we want all valid pixels with canopy cover > 0
+    mask_vals = valid & (band > 0)
+    results = [
+        (shape(geom), float(val))
+        for geom, val in shapes(band, mask=mask_vals, transform=out_transform)
+        if val > 0
+    ]
+    if not results:
+        return gpd.GeoDataFrame(columns=["canopy_percent", "geometry"], geometry=[], crs=crs)
+    geoms, vals = zip(*results)
+    return gpd.GeoDataFrame({"canopy_percent": vals}, geometry=list(geoms), crs=crs)
+
+def process_grid_binary(args):
+    """Process binary raster for 120m grid"""
+    city, raster_path, grid_geom, grid_id, epsg, source = args
 
     result = {
-        "grid_id": grid_id,          # original grid ID
-        "subgrid_id": sub_id,        # new subgrid ID
+        "grid_id": grid_id,
         "city": city,
         "source": source,
-        "Grid Cell Size": size
+        "grid_size_m": GRID_SIZE
     }
-    
+
     try:
         with rasterio.open(raster_path) as src:
-            out_image, out_transform = mask(src, [subgeom], crop=True)
-            polygons = raster_to_polygons(out_image, out_transform, src.nodata, crs=src.crs)
-            
+            out_image, out_transform = mask(src, [grid_geom], crop=True)
+            polygons = raster_to_polygons_binary(out_image, out_transform, src.nodata, crs=src.crs)
+
             if polygons.empty:
                 result.update({
                     "total_m2": 0,
@@ -110,7 +136,7 @@ def process_subgrid(args):
                 polygons = polygons.to_crs(epsg)
                 clipped = gpd.overlay(
                     polygons,
-                    gpd.GeoDataFrame(geometry=[subgeom], crs=epsg),
+                    gpd.GeoDataFrame(geometry=[grid_geom], crs=epsg),
                     how="intersection"
                 )
                 clipped["m2"] = clipped.geometry.area
@@ -119,11 +145,11 @@ def process_subgrid(args):
                 result.update({
                     "total_m2": total_m2,
                     "polygon_count": len(clipped),
-                    "percent_cover": (total_m2 / cell_area) * 100
+                    "percent_cover": (total_m2 / CELL_AREA) * 100
                 })
-                
+
     except Exception as e:
-        print(f"Error processing {city} {source}: {e}")
+        print(f"Error processing binary {city} {source}: {e}")
         result.update({
             "total_m2": 0,
             "percent_cover": 0,
@@ -132,13 +158,75 @@ def process_subgrid(args):
 
     return result
 
+def process_grid_fractional(args):
+    """Process fractional raster for 120m grid"""
+    city, raster_path, grid_geom, grid_id, epsg, source = args
+
+    result = {
+        "grid_id": grid_id,
+        "city": city,
+        "source": source,
+        "grid_size_m": GRID_SIZE
+    }
+
+    try:
+        with rasterio.open(raster_path) as src:
+            out_image, out_transform = mask(src, [grid_geom], crop=True, all_touched=True)
+            polygons = raster_to_polygons_fractional(out_image, out_transform, src.nodata, crs=src.crs)
+
+            if polygons.empty:
+                result.update({
+                    "total_m2": 0,
+                    "percent_cover": 0,
+                    "polygon_count": 0
+                })
+            else:
+                polygons.set_crs(src.crs, inplace=True)
+                polygons = polygons.to_crs(epsg)
+                clipped = gpd.overlay(
+                    polygons,
+                    gpd.GeoDataFrame(geometry=[grid_geom], crs=epsg),
+                    how="intersection"
+                )
+
+                # Calculate area for each polygon
+                clipped["polygon_area"] = clipped.geometry.area
+
+                # Calculate canopy area by multiplying polygon area by canopy percentage
+                clipped["canopy_m2"] = clipped["polygon_area"] * (clipped["canopy_percent"] / 100.0)
+
+                total_canopy_m2 = clipped["canopy_m2"].sum()
+                result.update({
+                    "total_m2": total_canopy_m2,
+                    "polygon_count": len(clipped),
+                    "percent_cover": (total_canopy_m2 / CELL_AREA) * 100
+                })
+
+    except Exception as e:
+        print(f"Error processing fractional {city} {source}: {e}")
+        result.update({
+            "total_m2": 0,
+            "percent_cover": 0,
+            "polygon_count": 0
+        })
+
+    return result
+
+def worker(task):
+    """Worker function to route tasks to appropriate processor"""
+    task_type, args = task
+    if task_type == "binary":
+        return process_grid_binary(args)
+    elif task_type == "fractional":
+        return process_grid_fractional(args)
+
 ## ------------------------------------------- CHECK PROJECTIONS -------------------------------------------
 
 print("Checking projections...")
 
 for city, info in datasets.items():
     target_epsg = info["epsg"]
-    
+
     # Shapefile EPSG
     gdf = gpd.read_file(info["shp"])
     shp_epsg = get_epsg_int(gdf.crs)
@@ -151,7 +239,7 @@ for city, info in datasets.items():
 
     # Raster EPSG
     all_match = True
-    for key in raster_keys:
+    for key in all_raster_keys:
         if key in info:
             raster_path = info[key]
             try:
@@ -178,7 +266,7 @@ for city, info in datasets.items():
     bayan_gdf = gpd.read_file(info["shp"]).to_crs(info["epsg"])
     bayan_bounds = bayan_gdf.total_bounds  # [minx, miny, maxx, maxy]
 
-    for key in raster_keys:
+    for key in all_raster_keys:
         if key in info:
             raster_path = info[key]
             try:
@@ -196,7 +284,7 @@ for city, info in datasets.items():
 
 ## ------------------------------------------- MAIN PROCESSING -------------------------------------------
 
-print("Starting subgrid analysis...")
+print(f"Starting 120m grid analysis...")
 
 # Build all tasks
 tasks = []
@@ -209,36 +297,39 @@ for city, dataset in datasets.items():
         (bayan_gdf.geometry.centroid.y // 120).astype(int).astype(str)
     )
 
-    for source in raster_keys:
+    for source in all_raster_keys:
         if source in dataset:
             raster_path = dataset[source]
 
-            for size in grid_sizes:
-                cell_area = size * size
+            for i, row in bayan_gdf.iterrows():
+                grid_geom = row.geometry
+                grid_id = row["grid_id"]
+                args = (city, raster_path, grid_geom, grid_id, epsg, source)
 
-                for i, row in bayan_gdf.iterrows():
-                    subgeom = row.geometry
-                    args = (city, raster_path, subgeom, row["grid_id"], epsg, cell_area, size, source)
-                    tasks.append(args)
+                # Determine task type based on source
+                if source in binary_raster_keys:
+                    tasks.append(("binary", args))
+                elif source in fractional_raster_keys:
+                    tasks.append(("fractional", args))
 
 print(f"Processing {len(tasks)} tasks using {N_CPUS} CPUs...")
 
 # Process all tasks in parallel
 with Pool(processes=N_CPUS) as pool:
     results = list(tqdm(
-        pool.imap_unordered(process_subgrid, tasks),
+        pool.imap_unordered(worker, tasks),
         total=len(tasks),
-        desc="Processing subgrids"
+        desc="Processing 120m grids"
     ))
 
 # Save results
 if results:
     df = pd.DataFrame(results)
-    output_path = os.path.join(OUT_DIR, "All_Methods_Percent_Cover.csv")
+    output_path = os.path.join(OUT_DIR, "Canopy_120m_Grids.csv")
     df.to_csv(output_path, index=False)
-    print(f"✅ Saved results to: {output_path}")
+    print(f"Saved results to: {output_path}")
     print(f"Total records: {len(df)}")
 else:
-    print("❌ No results generated")
+    print("No results generated")
 
 print("Processing complete!")
